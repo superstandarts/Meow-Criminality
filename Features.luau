@@ -4382,6 +4382,76 @@ Toggles.FastInteractToggle:OnChanged(function(state)
     end
 end)
 
+local AllowanceCooldown = 1
+local LastAllowance = 0
+
+local function isAllowancePrompt(prompt)
+    local text = (prompt.ActionText .. " " .. prompt.ObjectText):lower()
+    if text:find("allowance") or text:find("atm") then
+        return true
+    end
+    local node = prompt.Parent
+    for _ = 1, 5 do
+        if not node or node == workspace then
+            break
+        end
+        if node.Name:lower():find("atm") then
+            return true
+        end
+        node = node.Parent
+    end
+    return false
+end
+
+MiscLeft:AddToggle("AutoAllowance", {
+    Text = "Auto Collect Allowance",
+    Default = false,
+})
+
+MiscLeft:AddSlider("AllowanceDistance", {
+    Text = "Allowance Distance",
+    Min = 5,
+    Max = 40,
+    Default = 15,
+    Rounding = 0,
+})
+
+Runtime.Spawn(function()
+    while not Library.Unloaded do
+        task.wait(0.1)
+        if Library.Unloaded then
+            break
+        end
+        local toggle = Toggles and Toggles.AutoAllowance
+        if toggle and toggle.Value then
+            pcall(function()
+                if tick() - LastAllowance < AllowanceCooldown then
+                    return
+                end
+                local char = LocalPlayer.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then
+                    return
+                end
+                local distance = Options.AllowanceDistance and Options.AllowanceDistance.Value or 15
+                for prompt in pairs(prompts) do
+                    if prompt.Parent and prompt.Enabled and isAllowancePrompt(prompt) then
+                        local part = prompt.Parent
+                        if not part:IsA("BasePart") then
+                            part = part:FindFirstChildWhichIsA("BasePart")
+                        end
+                        if part and (hrp.Position - part.Position).Magnitude <= distance then
+                            LastAllowance = tick()
+                            fireproximityprompt(prompt, 1)
+                            return
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
  
 local function interactAll()
     if not enabled then return end
@@ -4611,10 +4681,117 @@ do
         end
     end)
 
+    local movementConnection
+    local movementOriginals = {}
 
-     
-     
-     
+    local function movementActive()
+        local walk = Toggles.WalkSpeedToggle
+        local jump = Toggles.JumpPowerToggle
+        return (walk and walk.Value) or (jump and jump.Value)
+    end
+
+    local function stopMovement()
+        if movementConnection then
+            movementConnection:Disconnect()
+            movementConnection = nil
+        end
+        for hum, original in pairs(movementOriginals) do
+            if hum.Parent then
+                hum.WalkSpeed = original.WalkSpeed
+                hum.JumpPower = original.JumpPower
+                hum.UseJumpPower = original.UseJumpPower
+            end
+        end
+        table.clear(movementOriginals)
+    end
+
+    local function ensureMovement()
+        if movementConnection or Library.Unloaded then
+            return
+        end
+        movementConnection = Runtime.Connect(RunService.RenderStepped, function()
+            if Library.Unloaded then
+                return
+            end
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+            if not hum then
+                return
+            end
+            local original = movementOriginals[hum]
+            if not original then
+                original = {
+                    WalkSpeed = hum.WalkSpeed,
+                    JumpPower = hum.JumpPower,
+                    UseJumpPower = hum.UseJumpPower,
+                }
+                movementOriginals[hum] = original
+            end
+            local walkToggle = Toggles.WalkSpeedToggle
+            local jumpToggle = Toggles.JumpPowerToggle
+            if walkToggle and walkToggle.Value then
+                local walkSlider = Options.WalkSpeedSlider
+                if walkSlider and hum.WalkSpeed ~= walkSlider.Value then
+                    hum.WalkSpeed = walkSlider.Value
+                end
+            elseif hum.WalkSpeed ~= original.WalkSpeed then
+                hum.WalkSpeed = original.WalkSpeed
+            end
+            if jumpToggle and jumpToggle.Value then
+                local jumpSlider = Options.JumpPowerSlider
+                if not hum.UseJumpPower then
+                    hum.UseJumpPower = true
+                end
+                if jumpSlider and hum.JumpPower ~= jumpSlider.Value then
+                    hum.JumpPower = jumpSlider.Value
+                end
+            else
+                if hum.UseJumpPower ~= original.UseJumpPower then
+                    hum.UseJumpPower = original.UseJumpPower
+                end
+                if hum.JumpPower ~= original.JumpPower then
+                    hum.JumpPower = original.JumpPower
+                end
+            end
+        end)
+    end
+
+    local function syncMovement()
+        if movementActive() and not Library.Unloaded then
+            ensureMovement()
+        else
+            stopMovement()
+        end
+    end
+
+    PlayerLeft:AddSlider("WalkSpeedSlider", {
+        Text = "Walk Speed",
+        Min = 16,
+        Max = 250,
+        Default = 32,
+        Rounding = 0,
+    })
+
+    PlayerLeft:AddToggle("WalkSpeedToggle", {
+        Text = "Enable Walk Speed",
+        Default = false,
+    })
+
+    PlayerLeft:AddSlider("JumpPowerSlider", {
+        Text = "Jump Power",
+        Min = 50,
+        Max = 300,
+        Default = 100,
+        Rounding = 0,
+    })
+
+    PlayerLeft:AddToggle("JumpPowerToggle", {
+        Text = "Enable Jump Power",
+        Default = false,
+    })
+
+    Toggles.WalkSpeedToggle:OnChanged(syncMovement)
+    Toggles.JumpPowerToggle:OnChanged(syncMovement)
 
     local SelectedPlayer = nil
     local Spectating = false
@@ -4827,6 +5004,7 @@ end)
 
 Library:OnUnload(function()
     disableStamina()
+    stopMovement()
     StopSpectate()
     SelectedPlayer = nil
     noclipEnabled = false

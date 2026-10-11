@@ -10,23 +10,23 @@
     "stringCount": 881
   },
   "featureBody": {
-    "tokenSha256": "fa567a9edbfd6c69ad7d2c122b5d3fa7b26c54b04789df135aafb20561c46fa9",
-    "stringSha256": "b4888a2535df2516af85fc6360d51509e0b1f7893a40f44a9d66e93de0d511e6",
-    "tokenCount": 23711,
-    "stringCount": 877
+    "tokenSha256": "6b2d5b4aa0c16ac4c32d2009e4fd57e03b05df336a6ae36758bd0ad79d501293",
+    "stringSha256": "1c77bb8989cfce7404c482d0d883fef94073e9d137c2a498a0d603071f806f21",
+    "tokenCount": 24513,
+    "stringCount": 897
   },
   "features": {
-    "tokenSha256": "de1a8d376b4a108c8c461b80a90f681f817b388d063c6625590bb06e6f2e4b94",
-    "stringSha256": "b4888a2535df2516af85fc6360d51509e0b1f7893a40f44a9d66e93de0d511e6",
-    "tokenCount": 23762,
-    "stringCount": 877
+    "tokenSha256": "e6544167b895d8e1e8218f39b76790db2450e14370ebccca084233c09f70f326",
+    "stringSha256": "1c77bb8989cfce7404c482d0d883fef94073e9d137c2a498a0d603071f806f21",
+    "tokenCount": 24564,
+    "stringCount": 897
   },
   "windUI": {
     "rawSha256": "e29ebad6907d6293731d1de042d6aec4a9428fcddbed8a8f19ef5f4ce05c6d05",
-    "tokenSha256": "7c9c3795a5121b1f8e768e4109065645afe755852b513c190ef675611cb26a2b",
-    "stringSha256": "72b8d837b1b4b729dc4b4cdea26855e687d28b6b482fd77b27aceec0ef7f91fe",
-    "tokenCount": 218129,
-    "stringCount": 30367
+    "tokenSha256": "80d5a194f9d2b0ecc415b6f5caa2dda7354ff3cea97ad5da6953ccabc56aa8f2",
+    "stringSha256": "5ca41ec3d587596ac607e3b92814980d652d7f919e64047598df0ffe8f80909c",
+    "tokenCount": 218132,
+    "stringCount": 30368
   },
   "license": {
     "sha256": "44d844d76e61f8a2ce40cba22d1962d65153c8f140d94d52eb2cbad3c25f6020"
