@@ -23,10 +23,10 @@
   },
   "windUI": {
     "rawSha256": "e29ebad6907d6293731d1de042d6aec4a9428fcddbed8a8f19ef5f4ce05c6d05",
-    "tokenSha256": "80d5a194f9d2b0ecc415b6f5caa2dda7354ff3cea97ad5da6953ccabc56aa8f2",
-    "stringSha256": "5ca41ec3d587596ac607e3b92814980d652d7f919e64047598df0ffe8f80909c",
-    "tokenCount": 218132,
-    "stringCount": 30368
+    "tokenSha256": "7c9c3795a5121b1f8e768e4109065645afe755852b513c190ef675611cb26a2b",
+    "stringSha256": "72b8d837b1b4b729dc4b4cdea26855e687d28b6b482fd77b27aceec0ef7f91fe",
+    "tokenCount": 218129,
+    "stringCount": 30367
   },
   "license": {
     "sha256": "44d844d76e61f8a2ce40cba22d1962d65153c8f140d94d52eb2cbad3c25f6020"
