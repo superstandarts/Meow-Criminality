@@ -16,10 +16,12 @@ The URL loads the version published on the `main` branch. No GitHub login is req
 - Drawing-free ESP mode with native highlights, names, and tracer lines.
 - Magic Bullet with a separate toggle and keybind, sharing the Silent Aim settings.
 - Optional instant delivery of the projectiles already present in a single shot.
+- WalkSpeed and JumpPower controls, applied on toggle, slider changes, and respawn rather than every render frame.
+- Auto Allowance with configurable ATM interaction distance.
 - Cached visual updates and cleanup when unloading or rerunning Meow.
 - Themes and presets stored under `Meow`.
 
-The menu key is `RightControl` by default. The window can be resized, and its search is enabled.
+The Obsidian menu key is `RightControl` by default. The window can be resized, and its search is enabled. The menu uses a high display order above game UI.
 
 ## Menu Layout
 
@@ -45,18 +47,18 @@ No immortality option is provided: this client script has no established server-
 
 This script requires a Roblox client environment exposing `loadstring` and the executor-specific APIs used by its features. It is not a standalone Luau program or a standard Roblox LocalScript.
 
-The interface is self-contained: the WindUI 1.6.66 library is bundled into `Criminality.luau` under its MIT license, and the local `MeowUI` facade and `MeowConfig` settings managers are embedded alongside it. No UI dependency is downloaded at startup.
+The interface uses Obsidian, as in the earlier versions. Its `Library.lua`, SaveManager, and the original custom ThemeManager are downloaded at startup. The current gameplay features remain in this repository; WindUI and its adapters are no longer included.
 
 ## Validation
 
-The published build passed Luau compilation and deterministic mock regression suites: 1,122 full-initialization assertions against the real `MeowUI`/`MeowConfig`, 134 interface checks, 106 configuration cases (1,513 assertions), and 497 feature regression tests, including category/control ownership and instant-projectile delivery. These tests do not verify live Roblox behavior, executor support, server acceptance, or real FPS performance.
+Validation uses Luau compilation and mock regressions for feature behavior, control ownership, movement cleanup, and delayed world containers. These tests do not verify live Obsidian rendering, Roblox behavior, executor support, server acceptance, or real FPS performance.
 
 ## Publishing Updates
 
-Update `Criminality.luau` in this repository and push the intended changes to `main`. Editing a separate local copy does not automatically update GitHub. The execution URL stays the same after new versions are published.
+Edit `Features.luau`, then run `node build.mjs` to produce `Criminality.luau`. The builder validates the Obsidian loader, rejects Luau comments, and verifies identical output bytes. Use `node build.mjs --output-copy original` to also update the local `Documentos\Criminality.luau` copy. Push the intended changes to `main` to publish them; the execution URL stays the same.
 
 ## Attribution
 
 Original Criminality script: [IchMagDichNicht / Pastel.wtf](https://github.com/lchMagDichNicht/Pastel.wtf-Script).
 
-Original author credit remains in the menu. The bundled interface library is [WindUI](https://github.com/Footagesus/WindUI) by Footagesus, included under its MIT license (see `WINDUI-LICENSE`). Upstream dependencies retain their authorship and applicable terms; this repository does not assign a new license to their code.
+Original author credit remains in the menu. The interface library is [Obsidian](https://github.com/deividcomsono/Obsidian) by deividcomsono. The custom ThemeManager is loaded from [placeholder14331/dependencies](https://github.com/placeholder14331/dependencies). Upstream dependencies retain their authorship and applicable terms; this repository does not assign a new license to their code.

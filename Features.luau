@@ -5,17 +5,27 @@ if previousLibrary and not previousLibrary.Unloaded then
 	previousLibrary:Unload()
 end
 
-local WindUI = WindUIFactory()
-local Library, ThemeManager, SaveManager = MeowUIFactory(WindUI, MeowConfigFactory)
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(
+    game:HttpGet("https://raw.githubusercontent.com/placeholder14331/dependencies/refs/heads/main/ThemeManager")
+)()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
 local Runtime = { Threads = {} }
 
 function Runtime.Connect(signal, callback)
-	return Library:GiveSignal(signal:Connect(function(...)
+	if Library.Unloaded then return nil end
+	local connection = signal:Connect(function(...)
 		if not Library.Unloaded then
 			callback(...)
 		end
-	end))
+	end)
+	if Library.Unloaded then
+		connection:Disconnect()
+		return nil
+	end
+	return Library:GiveSignal(connection)
 end
 
 function Runtime.Spawn(callback)
@@ -115,6 +125,7 @@ local Window = Library:CreateWindow({
 	Resizable = true,
 	ToggleKeybind = Enum.KeyCode.RightControl,
 })
+Library.ScreenGui.DisplayOrder = 2147483647
 
  
  
@@ -3346,10 +3357,49 @@ do
     local espEnabled = false
     local espObjects = {}
 
-    local crateFilter = workspace:FindFirstChild("Filter") or workspace:WaitForChild("Filter", 5)
-    if Library.Unloaded or not crateFilter then return end
-    local crateContainer = crateFilter:FindFirstChild("SpawnedPiles") or crateFilter:WaitForChild("SpawnedPiles", 5)
-    if Library.Unloaded or not crateContainer then return end
+    local function watchESPContainer(resolve, descendants, create, remove)
+        Runtime.Spawn(function()
+            local container
+            local addedConnection
+            local removingConnection
+            local tracked = {}
+            local function added(obj)
+                tracked[obj] = true
+                create(obj)
+            end
+            local function removing(obj)
+                tracked[obj] = nil
+                remove(obj)
+            end
+            Library:OnUnload(function()
+                for obj in pairs(tracked) do remove(obj) end
+                table.clear(tracked)
+            end)
+            while not Library.Unloaded do
+                local nextContainer = resolve()
+                if nextContainer ~= container then
+                    if addedConnection then addedConnection:Disconnect() end
+                    if removingConnection then removingConnection:Disconnect() end
+                    for obj in pairs(tracked) do remove(obj) end
+                    table.clear(tracked)
+                    container = nextContainer
+                    if container then
+                        addedConnection = Runtime.Connect(descendants and container.DescendantAdded or container.ChildAdded, added)
+                        removingConnection = Runtime.Connect(descendants and container.DescendantRemoving or container.ChildRemoved, removing)
+                        for _, obj in ipairs(descendants and container:GetDescendants() or container:GetChildren()) do
+                            added(obj)
+                        end
+                    end
+                end
+                task.wait(0.5)
+            end
+        end)
+    end
+
+    local function getPileContainer()
+        local filter = workspace:FindFirstChild("Filter")
+        return filter and filter:FindFirstChild("SpawnedPiles")
+    end
 
     local function isBest(particle)
         if not particle or not particle:IsA("ParticleEmitter") then
@@ -3422,12 +3472,7 @@ do
         espEnabled = false
         for obj in pairs(espObjects) do removeESP(obj) end
     end)
-    for _, v in ipairs(crateContainer:GetDescendants()) do
-        createESP(v)
-    end
-
-    Runtime.Connect(crateContainer.DescendantAdded, createESP)
-    Runtime.Connect(crateContainer.DescendantRemoving, removeESP)
+    watchESPContainer(getPileContainer, true, createESP, removeESP)
 
     local crateEspAccumulator = 0
     Runtime.Connect(RunService.RenderStepped, function(deltaTime)
@@ -3481,11 +3526,6 @@ do
 
     local safeEspEnabled = false
     local safeEspObjects = {}
-
-    local map = workspace:FindFirstChild("Map") or workspace:WaitForChild("Map", 5)
-    if Library.Unloaded or not map then return end
-    local safeContainer = map:FindFirstChild("BredMakurz") or map:WaitForChild("BredMakurz", 5)
-    if Library.Unloaded or not safeContainer then return end
 
     local selectedSafeFilter = "All"
 
@@ -3559,12 +3599,10 @@ do
         safeEspEnabled = false
         for obj in pairs(safeEspObjects) do removeSafeESP(obj) end
     end)
-    for _, v in ipairs(safeContainer:GetDescendants()) do
-        createSafeESP(v)
-    end
-
-    Runtime.Connect(safeContainer.DescendantAdded, createSafeESP)
-    Runtime.Connect(safeContainer.DescendantRemoving, removeSafeESP)
+    watchESPContainer(function()
+        local map = workspace:FindFirstChild("Map")
+        return map and map:FindFirstChild("BredMakurz")
+    end, true, createSafeESP, removeSafeESP)
 
     local safeEspAccumulator = 0
     Runtime.Connect(RunService.RenderStepped, function(deltaTime)
@@ -3656,8 +3694,6 @@ do
 
     local pileEspEnabled = false
     local pileEspObjects = {}
-
-    local pileContainer = crateContainer
 
     local selectedPileFilter = "All"
 
@@ -3766,12 +3802,7 @@ do
         pileEspEnabled = false
         for model in pairs(pileEspObjects) do removePileESP(model) end
     end)
-    for _, v in ipairs(pileContainer:GetChildren()) do
-        createPileESP(v)
-    end
-
-    Runtime.Connect(pileContainer.ChildAdded, createPileESP)
-    Runtime.Connect(pileContainer.ChildRemoved, removePileESP)
+    watchESPContainer(getPileContainer, false, createPileESP, removePileESP)
 
     local pileEspAccumulator = 0
     Runtime.Connect(RunService.RenderStepped, function(deltaTime)
@@ -3859,8 +3890,7 @@ do
      
      
 
-    local DealerESPFolder = map:WaitForChild("Shopz")
-    if Library.Unloaded then return end
+    local DealerESPFolder
 
     local DealerESPObjects = {}
 
@@ -3882,7 +3912,7 @@ do
     end
 
     local function createDealerESP(model)
-        if Library.Unloaded or not Toggles.DealerESP.Value
+        if Library.Unloaded or not DealerESPFolder or not Toggles.DealerESP.Value
             or not model:IsA("Model") or model.Parent ~= DealerESPFolder then
             return
         end
@@ -3951,6 +3981,7 @@ do
 
     local function enableDealerESP()
         clearDealerESP()
+        if not DealerESPFolder then return end
 
         for _, v in ipairs(DealerESPFolder:GetChildren()) do
             if v:IsA("Model") then
@@ -3973,17 +4004,20 @@ do
         end
     end)
 
-    Runtime.Connect(DealerESPFolder.ChildAdded, function(v)
+    watchESPContainer(function()
+        local map = workspace:FindFirstChild("Map")
+        DealerESPFolder = map and map:FindFirstChild("Shopz")
+        return DealerESPFolder
+    end, false, function(v)
         if Toggles.DealerESP.Value and v:IsA("Model") then
             Runtime.Spawn(function()
                 task.wait(0.2)
-                if Library.Unloaded or not Toggles.DealerESP.Value
+                if Library.Unloaded or not DealerESPFolder or not Toggles.DealerESP.Value
                     or v.Parent ~= DealerESPFolder then return end
                 createDealerESP(v)
             end)
         end
-    end)
-    Runtime.Connect(DealerESPFolder.ChildRemoved, removeDealerESP)
+    end, removeDealerESP)
 
     local dealerEspAccumulator = 0
     Runtime.Connect(RunService.RenderStepped, function(deltaTime)
@@ -3995,7 +4029,7 @@ do
         local character = LocalPlayer.Character
         local root = character and character:FindFirstChild("HumanoidRootPart")
         for model, data in pairs(DealerESPObjects) do
-            if model.Parent ~= DealerESPFolder or not data.adornee.Parent then
+            if not DealerESPFolder or model.Parent ~= DealerESPFolder or not data.adornee.Parent then
                 removeDealerESP(model)
             elseif root then
                 local distance = math.floor((root.Position - data.adornee.Position).Magnitude)
@@ -4682,85 +4716,60 @@ do
     end)
 
     local movementConnection
+    local movementCharacter
     local movementOriginals = {}
-
-    local function movementActive()
-        local walk = Toggles.WalkSpeedToggle
-        local jump = Toggles.JumpPowerToggle
-        return (walk and walk.Value) or (jump and jump.Value)
-    end
 
     local function stopMovement()
         if movementConnection then
             movementConnection:Disconnect()
             movementConnection = nil
         end
+        movementCharacter = nil
         for hum, original in pairs(movementOriginals) do
             if hum.Parent then
-                hum.WalkSpeed = original.WalkSpeed
-                hum.JumpPower = original.JumpPower
-                hum.UseJumpPower = original.UseJumpPower
+                if original.WalkSpeed ~= nil then hum.WalkSpeed = original.WalkSpeed end
+                if original.JumpPower ~= nil then
+                    hum.JumpPower = original.JumpPower
+                    hum.UseJumpPower = original.UseJumpPower
+                end
             end
         end
         table.clear(movementOriginals)
     end
 
-    local function ensureMovement()
-        if movementConnection or Library.Unloaded then
-            return
-        end
-        movementConnection = Runtime.Connect(RunService.RenderStepped, function()
-            if Library.Unloaded then
-                return
-            end
-            local char = LocalPlayer.Character
-            local hum = char and char:FindFirstChildWhichIsA("Humanoid")
-            if not hum then
-                return
-            end
-            local original = movementOriginals[hum]
-            if not original then
-                original = {
-                    WalkSpeed = hum.WalkSpeed,
-                    JumpPower = hum.JumpPower,
-                    UseJumpPower = hum.UseJumpPower,
-                }
-                movementOriginals[hum] = original
-            end
-            local walkToggle = Toggles.WalkSpeedToggle
-            local jumpToggle = Toggles.JumpPowerToggle
-            if walkToggle and walkToggle.Value then
-                local walkSlider = Options.WalkSpeedSlider
-                if walkSlider and math.abs(hum.WalkSpeed - walkSlider.Value) > 0.01 then
-                    hum.WalkSpeed = walkSlider.Value
-                end
-            elseif original.WalkSpeed and math.abs(hum.WalkSpeed - original.WalkSpeed) > 0.01 then
-                hum.WalkSpeed = original.WalkSpeed
-            end
-            if jumpToggle and jumpToggle.Value then
-                local jumpSlider = Options.JumpPowerSlider
-                if hum.UseJumpPower ~= true then
-                    hum.UseJumpPower = true
-                end
-                if jumpSlider and math.abs(hum.JumpPower - jumpSlider.Value) > 0.01 then
-                    hum.JumpPower = jumpSlider.Value
-                end
-            else
-                if original.UseJumpPower ~= nil and hum.UseJumpPower ~= original.UseJumpPower then
-                    hum.UseJumpPower = original.UseJumpPower
-                end
-                if original.JumpPower and math.abs(hum.JumpPower - original.JumpPower) > 0.01 then
-                    hum.JumpPower = original.JumpPower
-                end
-            end
-        end)
-    end
-
     local function syncMovement()
-        if movementActive() and not Library.Unloaded then
-            ensureMovement()
-        else
-            stopMovement()
+        if Library.Unloaded then return end
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+        if not hum then return end
+        local original = movementOriginals[hum]
+        if not original then
+            original = {}
+            movementOriginals[hum] = original
+        end
+        if Toggles.WalkSpeedToggle.Value then
+            if original.WalkSpeed == nil then original.WalkSpeed = hum.WalkSpeed end
+            if hum.WalkSpeed ~= Options.WalkSpeedSlider.Value then
+                hum.WalkSpeed = Options.WalkSpeedSlider.Value
+            end
+        elseif original.WalkSpeed ~= nil then
+            hum.WalkSpeed = original.WalkSpeed
+            original.WalkSpeed = nil
+        end
+        if Toggles.JumpPowerToggle.Value then
+            if original.JumpPower == nil then
+                original.JumpPower = hum.JumpPower
+                original.UseJumpPower = hum.UseJumpPower
+            end
+            if not hum.UseJumpPower then hum.UseJumpPower = true end
+            if hum.JumpPower ~= Options.JumpPowerSlider.Value then
+                hum.JumpPower = Options.JumpPowerSlider.Value
+            end
+        elseif original.JumpPower ~= nil then
+            hum.JumpPower = original.JumpPower
+            hum.UseJumpPower = original.UseJumpPower
+            original.JumpPower = nil
+            original.UseJumpPower = nil
         end
     end
 
@@ -4792,6 +4801,24 @@ do
 
     Toggles.WalkSpeedToggle:OnChanged(syncMovement)
     Toggles.JumpPowerToggle:OnChanged(syncMovement)
+    Options.WalkSpeedSlider:OnChanged(syncMovement)
+    Options.JumpPowerSlider:OnChanged(syncMovement)
+
+    local function bindMovementCharacter(character)
+        stopMovement()
+        if Library.Unloaded then return end
+        movementCharacter = character
+        movementConnection = Runtime.Connect(character.ChildAdded, function(child)
+            if child:IsA("Humanoid") then syncMovement() end
+        end)
+        syncMovement()
+    end
+
+    Runtime.Connect(LocalPlayer.CharacterAdded, bindMovementCharacter)
+    Runtime.Connect(LocalPlayer.CharacterRemoving, function(character)
+        if character == movementCharacter then stopMovement() end
+    end)
+    if LocalPlayer.Character then bindMovementCharacter(LocalPlayer.Character) end
 
     local SelectedPlayer = nil
     local Spectating = false
