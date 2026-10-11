@@ -4731,25 +4731,25 @@ do
             local jumpToggle = Toggles.JumpPowerToggle
             if walkToggle and walkToggle.Value then
                 local walkSlider = Options.WalkSpeedSlider
-                if walkSlider and hum.WalkSpeed ~= walkSlider.Value then
+                if walkSlider and math.abs(hum.WalkSpeed - walkSlider.Value) > 0.01 then
                     hum.WalkSpeed = walkSlider.Value
                 end
-            elseif hum.WalkSpeed ~= original.WalkSpeed then
+            elseif original.WalkSpeed and math.abs(hum.WalkSpeed - original.WalkSpeed) > 0.01 then
                 hum.WalkSpeed = original.WalkSpeed
             end
             if jumpToggle and jumpToggle.Value then
                 local jumpSlider = Options.JumpPowerSlider
-                if not hum.UseJumpPower then
+                if hum.UseJumpPower ~= true then
                     hum.UseJumpPower = true
                 end
-                if jumpSlider and hum.JumpPower ~= jumpSlider.Value then
+                if jumpSlider and math.abs(hum.JumpPower - jumpSlider.Value) > 0.01 then
                     hum.JumpPower = jumpSlider.Value
                 end
             else
-                if hum.UseJumpPower ~= original.UseJumpPower then
+                if original.UseJumpPower ~= nil and hum.UseJumpPower ~= original.UseJumpPower then
                     hum.UseJumpPower = original.UseJumpPower
                 end
-                if hum.JumpPower ~= original.JumpPower then
+                if original.JumpPower and math.abs(hum.JumpPower - original.JumpPower) > 0.01 then
                     hum.JumpPower = original.JumpPower
                 end
             end
