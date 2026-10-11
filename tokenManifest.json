@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "tokenHashFormat": "luau-lexical-v1",
+  "windUIVersion": "1.6.66",
+  "original": {
+    "sha256": "630d76616c8fff4865c08d2653fed388d97ec1643dbf6eb1b024c9e078c0d9eb",
+    "tokenSha256": "350713091519006151d3fe5a86e04154c7208cb028f4745e8b1ccf2dfabdf389",
+    "stringSha256": "5ed7e6b2d21ebb848ac3e84a88d72292facbd3dffff6a009ef279536abc97ebc",
+    "tokenCount": 23793,
+    "stringCount": 881
+  },
+  "featureBody": {
+    "tokenSha256": "fa567a9edbfd6c69ad7d2c122b5d3fa7b26c54b04789df135aafb20561c46fa9",
+    "stringSha256": "b4888a2535df2516af85fc6360d51509e0b1f7893a40f44a9d66e93de0d511e6",
+    "tokenCount": 23711,
+    "stringCount": 877
+  },
+  "features": {
+    "tokenSha256": "de1a8d376b4a108c8c461b80a90f681f817b388d063c6625590bb06e6f2e4b94",
+    "stringSha256": "b4888a2535df2516af85fc6360d51509e0b1f7893a40f44a9d66e93de0d511e6",
+    "tokenCount": 23762,
+    "stringCount": 877
+  },
+  "windUI": {
+    "rawSha256": "e29ebad6907d6293731d1de042d6aec4a9428fcddbed8a8f19ef5f4ce05c6d05",
+    "tokenSha256": "7c9c3795a5121b1f8e768e4109065645afe755852b513c190ef675611cb26a2b",
+    "stringSha256": "72b8d837b1b4b729dc4b4cdea26855e687d28b6b482fd77b27aceec0ef7f91fe",
+    "tokenCount": 218129,
+    "stringCount": 30367
+  },
+  "license": {
+    "sha256": "44d844d76e61f8a2ce40cba22d1962d65153c8f140d94d52eb2cbad3c25f6020"
+  }
+}

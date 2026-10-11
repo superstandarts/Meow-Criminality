@@ -43,16 +43,13 @@ No immortality option is provided: this client script has no established server-
 
 ## Requirements
 
-This script requires a Roblox client environment exposing `loadstring`, `game:HttpGet`, and the executor-specific APIs used by its features. It is not a standalone Luau program or a standard Roblox LocalScript.
+This script requires a Roblox client environment exposing `loadstring` and the executor-specific APIs used by its features. It is not a standalone Luau program or a standard Roblox LocalScript.
 
-The UI and configuration managers are downloaded from these upstream dependencies at startup:
-
-- [Obsidian](https://github.com/deividcomsono/Obsidian)
-- [ThemeManager](https://github.com/placeholder14331/dependencies)
+The interface is self-contained: the WindUI 1.6.66 library is bundled into `Criminality.luau` under its MIT license, and the local `MeowUI` facade and `MeowConfig` settings managers are embedded alongside it. No UI dependency is downloaded at startup.
 
 ## Validation
 
-The published build passed Luau compilation and 497 deterministic mock regression tests, including category/control ownership and instant-projectile delivery. These tests do not verify live Roblox behavior, executor support, server acceptance, or real FPS performance.
+The published build passed Luau compilation and deterministic mock regression suites: 1,122 full-initialization assertions against the real `MeowUI`/`MeowConfig`, 134 interface checks, 106 configuration cases (1,513 assertions), and 497 feature regression tests, including category/control ownership and instant-projectile delivery. These tests do not verify live Roblox behavior, executor support, server acceptance, or real FPS performance.
 
 ## Publishing Updates
 
@@ -62,4 +59,4 @@ Update `Criminality.luau` in this repository and push the intended changes to `m
 
 Original Criminality script: [IchMagDichNicht / Pastel.wtf](https://github.com/lchMagDichNicht/Pastel.wtf-Script).
 
-Original author credit remains in the menu. Upstream dependencies retain their authorship and applicable terms; this repository does not assign a new license to their code.
+Original author credit remains in the menu. The bundled interface library is [WindUI](https://github.com/Footagesus/WindUI) by Footagesus, included under its MIT license (see `WINDUI-LICENSE`). Upstream dependencies retain their authorship and applicable terms; this repository does not assign a new license to their code.
