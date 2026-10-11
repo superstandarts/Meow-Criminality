@@ -111,12 +111,12 @@ local Window = Library:CreateWindow({
 	Title = "Meow",
 	Icon = "cat",
 	ShowCustomCursor = false,
-	DisableSearch = true,
-	Size = UDim2.fromOffset(650, 480),
+	DisableSearch = false,
+	Size = UDim2.fromOffset(740, 540),
 	IconSize = UDim2.fromOffset(40, 40),
 	Footer = "Meow | original script by IchMagDichNicht",
 	NotifySide = "Right",
-	Resizable = false,
+	Resizable = true,
 	ToggleKeybind = Enum.KeyCode.RightControl,
 })
 
@@ -125,15 +125,38 @@ local Window = Library:CreateWindow({
 -- ================================
 local Tabs = {
 	Home = Window:AddTab("Home", "house"),
-    Melee = Window:AddTab("Melee", "swords"),
-    Gun = Window:AddTab("Gun", "bow-arrow"),
-    Aimbot = Window:AddTab("Aimbot", "crosshair"),
-    View = Window:AddTab("View", "eye"),
-    World = Window:AddTab("World", "earth"),
-    Misc = Window:AddTab("Misc", "star"),
+    Combat = Window:AddTab("Combat", "crosshair"),
+    ESP = Window:AddTab("ESP", "scan-eye"),
+    Visuals = Window:AddTab("Visuals", "eye"),
+    Automation = Window:AddTab("Automation", "rotate-ccw"),
     Player = Window:AddTab("Player", "user"),
-    Settings = Window:AddTab("UI Settings", "settings"),
+    Settings = Window:AddTab("Settings", "settings"),
 }
+
+local UseCheapESP = not Drawing
+pcall(function()
+    local executor = string.lower(tostring(executorName))
+    if executor:find("xeno") or executor:find("solara") then UseCheapESP = true end
+end)
+
+local CombatLeft = Tabs.Combat:AddTabbox({ Side = "Left", Name = "CombatLeft", PopOut = false })
+local CombatRight = Tabs.Combat:AddTabbox({ Side = "Right", Name = "CombatRight", PopOut = false })
+local CombatGroups = {}
+CombatGroups.Weapons = CombatLeft:AddTab("Weapons")
+CombatGroups.Aim = CombatLeft:AddTab("Aim")
+CombatGroups.Melee = CombatLeft:AddTab("Melee")
+CombatGroups.ShotAssist = CombatRight:AddTab("Shot Assist")
+CombatGroups.MeleeTargets = CombatRight:AddTab("Targets")
+
+local ESPLeftTabs = Tabs.ESP:AddTabbox({ Side = "Left", Name = "ESPLeft", PopOut = false })
+local ESPRightTabs = Tabs.ESP:AddTabbox({ Side = "Right", Name = "ESPRight", PopOut = false })
+local ESPGroups = {}
+ESPGroups.General = ESPLeftTabs:AddTab("Players")
+ESPGroups.World = ESPLeftTabs:AddTab("World")
+ESPGroups.Boxes = ESPRightTabs:AddTab(UseCheapESP and "Chams" or "Boxes")
+ESPGroups.Text = ESPRightTabs:AddTab("Text")
+ESPGroups.Health = ESPRightTabs:AddTab("Health")
+ESPGroups.Lines = ESPRightTabs:AddTab("Lines")
 
 -- =================================
 -- Settings Tab Layout
@@ -330,8 +353,8 @@ end
 -- Melee
 -- ================================
 do
-	local Melee = Tabs.Melee:AddLeftGroupbox("Melee", "sword")
-	local Targets = Tabs.Melee:AddRightGroupbox("Targets", "users")
+	local Melee = CombatGroups.Melee
+	local Targets = CombatGroups.MeleeTargets
 
 	-- =========================
 	-- Settings
@@ -962,7 +985,7 @@ end
 -- Gun
 -- =========================
 do
-local GunLeft = Tabs.Gun:AddLeftGroupbox("Gun", "bow-arrow")
+local GunLeft = CombatGroups.Weapons
 
 local Options = Library.Options
 local Toggles = Library.Toggles
@@ -1156,8 +1179,8 @@ end
 -- Aimbot & Silent Aim Script
 -- =========================
 do
-    local AimbotLeft = Tabs.Aimbot:AddLeftGroupbox("Aimbot", "crosshair")
-    local AimbotRight = Tabs.Aimbot:AddRightGroupbox("Silent Aim", "crosshair")
+    local AimbotLeft = CombatGroups.Aim
+    local AimbotRight = CombatGroups.ShotAssist
 
     local on = false
     local tgtPart = "Head"
@@ -1270,7 +1293,7 @@ do
     -- SILENT AIM LOGIC
     -- =========================
     local SA = {
-        On = false, MagicBullet = false, DrawCircle = false, DrawSize = 100, ChkDowned = false, ChkTeam = false, VisChk = false,
+        On = false, MagicBullet = false, InstantPelletDelivery = false, DrawCircle = false, DrawSize = 100, ChkDowned = false, ChkTeam = false, VisChk = false,
         MaxDist = 500, AutoWall = true, HitChance = 100, UseFOV = true, Debug = false,
         FOVCol = Color3.fromRGB(255, 255, 255), TMode = "Head",
         Parts = { 
@@ -1454,6 +1477,7 @@ do
                     local t = _G.CurSATarget
                     if not canFire(t) or math.random(1, 100) > SA.HitChance then return end
                     local tp = t.Part; local pPos = tp.Position
+                    local instantPelletDelivery = SA.InstantPelletDelivery
                     local rOff = Vector3.new((math.random()-0.5)*0.5,(math.random()-0.5)*0.5,(math.random()-0.5)*0.5)
                     local hitPos = SA.MagicBullet and pPos or pPos + rOff
                     local newB = {}; for i=1,#bps do
@@ -1464,8 +1488,10 @@ do
                     Runtime.Spawn(function()
                         -- A pellet group keeps its shot-time target while that target remains valid.
                         for i=1,#newB do
-                            task.wait(0.01)
-                            if not canFire(t) or LP.Character ~= char or gun.Parent ~= char then break end
+                            if not instantPelletDelivery then task.wait(0.01) end
+                            -- The instant group does not yield; one validation covers the whole group.
+                            if (i == 1 or not instantPelletDelivery)
+                                and (not canFire(t) or LP.Character ~= char or gun.Parent ~= char) then break end
                             pcall(function() ZFK_remote:FireServer("🧈", gun, sc, i, tp, hitPos, newB[i]) end)
                         end
                     end)
@@ -1520,6 +1546,16 @@ do
         Tooltip = "Targets Head only and skips the client wall check. Shares FOV, whitelist, max distance and hit chance. Requires server acceptance; no curved bullet visuals.",
     }):AddKeyPicker("MagicBulletKey", { Default = "None", Text = "Magic Bullet", Mode = "Toggle", SyncToggleState = true })
     Toggles.MagicBullet:OnChanged(function(state) SA.MagicBullet = state; syncSARuntime() end)
+
+    AimbotRight:AddToggle("InstantPelletDelivery", {
+        Text = "Instant Pellet Delivery", Default = false,
+        Tooltip = "For Silent Aim / Magic Bullet: sends the existing projectiles of one shot without Meow's delay. Does not fire a whole magazine, create extra bullets, or guarantee a kill.",
+    })
+    Toggles.InstantPelletDelivery:OnChanged(function(state)
+        SA.InstantPelletDelivery = state
+        clearSATarget()
+    end)
+    AimbotRight:AddDivider()
 
     AimbotRight:AddDropdown("SATargetPart", { Text = "Target Part", Values = { "Head", "Torso", "Arms", "Legs", "Random" }, Default = 1 })
     Options.SATargetPart:OnChanged(function() SA.TMode = Options.SATargetPart.Value; clearSATarget() end)
@@ -1601,35 +1637,20 @@ end
 -- =========================
 -- View
 -- =========================
-
-local UseCheapESP = not Drawing
-
-pcall(function()
-
-    if identifyexecutor then
-
-        local Executor = string.lower(
-            tostring(identifyexecutor())
-        )
-
-        if Executor:find("xeno")
-        or Executor:find("solara") then
-
-            warn("Cheap ESP Enabled For: " .. Executor)
-
-            UseCheapESP = true
-        end
-    end
-end)
-
--- =========================
--- View
--- =========================
 do
 
-local ESPLeft = Tabs.View:AddLeftGroupbox("ESP", "scan-eye")
-local ViewRight = Tabs.View:AddRightGroupbox("CrossHair", "crosshair")
-local ChamsRight = Tabs.View:AddRightGroupbox("Chams", "blend")
+local ESPGeneral = ESPGroups.General
+local ESPBoxes = ESPGroups.Boxes
+local ESPText = ESPGroups.Text
+local ESPHealth = ESPGroups.Health
+local ESPLines = ESPGroups.Lines
+local ViewRight = Tabs.Visuals:AddRightGroupbox("Crosshair", "crosshair")
+local ChamsRight = Tabs.Visuals:AddRightGroupbox("Weapon Appearance", "blend")
+
+ESPGeneral:AddLabel({
+    Text = "Customize boxes/chams, text, health, and lines in the right-side tabs.",
+    DoesWrap = true,
+})
 
 -- =========================
 -- CHEAP ESP FOR XENO/SOLARA
@@ -1637,63 +1658,68 @@ local ChamsRight = Tabs.View:AddRightGroupbox("Chams", "blend")
 
 if UseCheapESP then
 
-    ESPLeft:AddToggle("ESPEnabled", {
+    ESPGeneral:AddToggle("ESPEnabled", {
         Text = "Enable ESP",
         Default = false,
     })
 
-    ESPLeft:AddToggle("ESPChams", {
+    ESPBoxes:AddToggle("ESPChams", {
         Text = "Chams Fill", Default = true,
     }):AddColorPicker("ESPFillColor", {
         Title = "Chams Fill Color", Default = Color3.new(1, 1, 1),
     })
-    ESPLeft:AddSlider("ESPFillOpacity", {
+    ESPBoxes:AddSlider("ESPFillOpacity", {
         Text = "Chams Fill Opacity", Default = 30, Min = 0, Max = 100, Rounding = 0, Suffix = "%",
     })
 
-    ESPLeft:AddToggle("ESPChamsOutline", {
+    ESPBoxes:AddToggle("ESPChamsOutline", {
         Text = "Chams Outline", Default = true,
     }):AddColorPicker("ESPBoxColor", {
         Title = "Chams Outline Color", Default = Color3.new(1, 1, 1),
     })
-    ESPLeft:AddSlider("ESPBoxOpacity", {
+    ESPBoxes:AddSlider("ESPBoxOpacity", {
         Text = "Chams Outline Opacity", Default = 100, Min = 0, Max = 100, Rounding = 0, Suffix = "%",
     })
 
-    ESPLeft:AddToggle("ESPName", {
+    ESPText:AddToggle("ESPName", {
         Text = "Name ESP", Default = true,
     }):AddColorPicker("ESPNameColor", {
         Title = "Name Color", Default = Color3.new(1, 1, 1),
     })
-    ESPLeft:AddSlider("ESPTextOpacity", {
+    ESPText:AddSlider("ESPTextOpacity", {
         Text = "Text Opacity", Default = 100, Min = 0, Max = 100, Rounding = 0, Suffix = "%",
     })
-    ESPLeft:AddSlider("ESPTextSize", {
+    ESPText:AddSlider("ESPTextSize", {
         Text = "Text Size", Default = 13, Min = 10, Max = 25, Rounding = 0,
     })
-    ESPLeft:AddToggle("ESPTextOutline", {
+    ESPText:AddToggle("ESPTextOutline", {
         Text = "Text Outline", Default = true,
     })
 
-    ESPLeft:AddToggle("ESPTracer", {
+    ESPLines:AddToggle("ESPTracer", {
         Text = "Line ESP (Tracer)", Default = false,
     }):AddColorPicker("ESPTracerColor", {
         Title = "Line Color", Default = Color3.new(1, 1, 1),
     })
-    ESPLeft:AddSlider("ESPTracerOpacity", {
+    ESPLines:AddSlider("ESPTracerOpacity", {
         Text = "Line Opacity", Default = 100, Min = 0, Max = 100, Rounding = 0, Suffix = "%",
     })
-    ESPLeft:AddSlider("ESPTracerThickness", {
+    ESPLines:AddSlider("ESPTracerThickness", {
         Text = "Line Thickness", Default = 2, Min = 1, Max = 5, Rounding = 0,
     })
-    ESPLeft:AddDropdown("ESPTracerOrigin", {
+    ESPLines:AddDropdown("ESPTracerOrigin", {
         Text = "Line Origin", Values = { "Bottom", "Center", "Mouse", "Top" }, Default = 1,
     })
-    ESPLeft:AddDropdown("ESPTracerTarget", {
+    ESPLines:AddDropdown("ESPTracerTarget", {
         Text = "Line Target", Values = { "Head", "Torso", "Feet" }, Default = 3,
     })
-    ESPLeft:AddSlider("ESPMaxDistance", {
+    ESPGeneral:AddSlider("ESPMaxDistance", {
         Text = "Max Distance", Default = 500, Min = 100, Max = 5000, Rounding = 0, Suffix = "studs",
+    })
+
+    ESPHealth:AddLabel({
+        Text = "Health overlays are available in Drawing mode.",
+        DoesWrap = true,
     })
 
     local ESPFolder = Instance.new("Folder")
@@ -1992,15 +2018,12 @@ if UseCheapESP then
 
 else
 
-local ESPAppearance = Tabs.View:AddRightGroupbox("ESP Appearance", "palette")
-local ESPLineSettings = Tabs.View:AddRightGroupbox("ESP Lines", "route")
-
-ESPLeft:AddToggle("ESPEnabled", {
+ESPGeneral:AddToggle("ESPEnabled", {
     Text = "Enable ESP",
     Default = false,
 })
 
-local BoxToggle = ESPLeft:AddToggle("ESPBox", {
+local BoxToggle = ESPBoxes:AddToggle("ESPBox", {
     Text = "Box ESP",
     Default = false,
 })
@@ -2010,7 +2033,7 @@ BoxToggle:AddColorPicker("ESPBoxColor", {
     Title = "Box Color",
 })
 
-local FillToggle = ESPLeft:AddToggle("ESPFill", {
+local FillToggle = ESPBoxes:AddToggle("ESPFill", {
     Text = "Filled Box",
     Default = false,
 })
@@ -2020,7 +2043,7 @@ FillToggle:AddColorPicker("ESPFillColor", {
     Title = "Fill Color",
 })
 
-local NameToggle = ESPLeft:AddToggle("ESPName", {
+local NameToggle = ESPText:AddToggle("ESPName", {
     Text = "Name ESP",
     Default = false,
 })
@@ -2030,7 +2053,7 @@ NameToggle:AddColorPicker("ESPNameColor", {
     Title = "Name Color",
 })
 
-local DistanceToggle = ESPLeft:AddToggle("ESPDistance", {
+local DistanceToggle = ESPText:AddToggle("ESPDistance", {
     Text = "Distance ESP",
     Default = false,
 })
@@ -2040,7 +2063,7 @@ DistanceToggle:AddColorPicker("ESPDistanceColor", {
     Title = "Distance Color",
 })
 
-local HealthBarToggle = ESPLeft:AddToggle("ESPHealthBar", {
+local HealthBarToggle = ESPHealth:AddToggle("ESPHealthBar", {
     Text = "Health Bar",
     Default = false,
 })
@@ -2049,12 +2072,12 @@ HealthBarToggle:AddColorPicker("ESPHealthColor", {
     Title = "Custom Health Color",
 })
 
-ESPLeft:AddToggle("ESPHealthText", {
+ESPHealth:AddToggle("ESPHealthText", {
     Text = "Health Text",
     Default = false,
 })
 
-local TracerToggle = ESPLeft:AddToggle("ESPTracer", {
+local TracerToggle = ESPLines:AddToggle("ESPTracer", {
     Text = "Line ESP (Tracer)",
     Default = false,
 })
@@ -2064,7 +2087,7 @@ TracerToggle:AddColorPicker("ESPTracerColor", {
     Title = "Tracer Color",
 })
 
-ESPLeft:AddSlider("ESPMaxDistance", {
+ESPGeneral:AddSlider("ESPMaxDistance", {
     Text = "Max Distance",
     Default = 2000,
     Min = 100,
@@ -2073,7 +2096,7 @@ ESPLeft:AddSlider("ESPMaxDistance", {
     Suffix = "m",
 })
 
-ESPAppearance:AddSlider("ESPThickness", {
+ESPBoxes:AddSlider("ESPThickness", {
     Text = "Box Thickness",
     Default = 2,
     Min = 1,
@@ -2081,7 +2104,7 @@ ESPAppearance:AddSlider("ESPThickness", {
     Rounding = 1,
 })
 
-ESPAppearance:AddSlider("ESPTextSize", {
+ESPText:AddSlider("ESPTextSize", {
     Text = "Text Size",
     Default = 13,
     Min = 10,
@@ -2089,7 +2112,7 @@ ESPAppearance:AddSlider("ESPTextSize", {
     Rounding = 0,
 })
 
-ESPAppearance:AddSlider("ESPBoxOpacity", {
+ESPBoxes:AddSlider("ESPBoxOpacity", {
     Text = "Box Opacity",
     Default = 100,
     Min = 0,
@@ -2097,7 +2120,7 @@ ESPAppearance:AddSlider("ESPBoxOpacity", {
     Rounding = 0,
     Suffix = "%",
 })
-ESPAppearance:AddSlider("ESPFillOpacity", {
+ESPBoxes:AddSlider("ESPFillOpacity", {
     Text = "Fill Opacity",
     Default = 20,
     Min = 0,
@@ -2105,7 +2128,7 @@ ESPAppearance:AddSlider("ESPFillOpacity", {
     Rounding = 0,
     Suffix = "%",
 })
-ESPAppearance:AddSlider("ESPTextOpacity", {
+ESPText:AddSlider("ESPTextOpacity", {
     Text = "Text Opacity",
     Default = 100,
     Min = 0,
@@ -2113,7 +2136,7 @@ ESPAppearance:AddSlider("ESPTextOpacity", {
     Rounding = 0,
     Suffix = "%",
 })
-ESPAppearance:AddSlider("ESPHealthOpacity", {
+ESPHealth:AddSlider("ESPHealthOpacity", {
     Text = "Health Bar Opacity",
     Default = 100,
     Min = 0,
@@ -2121,33 +2144,33 @@ ESPAppearance:AddSlider("ESPHealthOpacity", {
     Rounding = 0,
     Suffix = "%",
 })
-ESPAppearance:AddToggle("ESPTextOutline", {
+ESPText:AddToggle("ESPTextOutline", {
     Text = "Text Outline",
     Default = true,
 })
-ESPAppearance:AddDropdown("ESPFont", {
+ESPText:AddDropdown("ESPFont", {
     Text = "Text Font",
     Values = { "UI", "System", "Plex", "Monospace" },
     Default = 3,
 })
-ESPAppearance:AddDropdown("ESPNameMode", {
+ESPText:AddDropdown("ESPNameMode", {
     Text = "Name Format",
     Values = { "Username", "Display Name", "Both" },
     Default = 1,
 })
-ESPAppearance:AddDropdown("ESPHealthColorMode", {
+ESPHealth:AddDropdown("ESPHealthColorMode", {
     Text = "Health Color",
     Values = { "Health Gradient", "Custom" },
     Default = 1,
 })
-ESPAppearance:AddDropdown("ESPRefreshRate", {
+ESPGeneral:AddDropdown("ESPRefreshRate", {
     Text = "ESP Update Rate",
     Values = { "15 Hz", "30 Hz", "60 Hz" },
     Default = 3,
     Tooltip = "Only changes the ESP update rate, not the game's FPS limit.",
 })
 
-ESPLineSettings:AddSlider("ESPTracerOpacity", {
+ESPLines:AddSlider("ESPTracerOpacity", {
     Text = "Line Opacity",
     Default = 100,
     Min = 0,
@@ -2155,14 +2178,14 @@ ESPLineSettings:AddSlider("ESPTracerOpacity", {
     Rounding = 0,
     Suffix = "%",
 })
-ESPLineSettings:AddSlider("ESPTracerThickness", {
+ESPLines:AddSlider("ESPTracerThickness", {
     Text = "Line Thickness",
     Default = 2,
     Min = 1,
     Max = 5,
     Rounding = 1,
 })
-ESPLineSettings:AddDropdown("ESPTracerOrigin", {
+ESPLines:AddDropdown("ESPTracerOrigin", {
     Text = "Tracer Origin",
     Values = {
         "Bottom",
@@ -2172,7 +2195,7 @@ ESPLineSettings:AddDropdown("ESPTracerOrigin", {
     },
     Default = 1,
 })
-ESPLineSettings:AddDropdown("ESPTracerTarget", {
+ESPLines:AddDropdown("ESPTracerTarget", {
     Text = "Line Target",
     Values = { "Head", "Torso", "Feet" },
     Default = 3,
@@ -3053,8 +3076,10 @@ end
 -- World
 -- =========================
 do
-    local WorldLeft = Tabs.World:AddLeftGroupbox("World", "earth")
-    local WorldRight = Tabs.World:AddRightGroupbox("Filter", "funnel")
+    local CameraBox = Tabs.Visuals:AddLeftGroupbox("Camera", "camera")
+    local LightingBox = Tabs.Visuals:AddRightGroupbox("Lighting", "sun")
+    local PerformanceBox = Tabs.Settings:AddRightGroupbox("Performance", "gauge")
+    local WorldESP = ESPGroups.World
 
     -- SERVICES
     local Players = game:GetService("Players")
@@ -3168,7 +3193,7 @@ do
         end
     end
 
-    WorldLeft:AddToggle("FPSBoost", {
+    PerformanceBox:AddToggle("FPSBoost", {
         Text = "FPS Boost",
         Default = false,
     })
@@ -3250,7 +3275,7 @@ do
         end
     end
 
-    WorldLeft:AddToggle("FullBrightToggle", {
+    LightingBox:AddToggle("FullBrightToggle", {
         Text = "FullBright",
         Default = false,
     })
@@ -3276,12 +3301,12 @@ do
         table.clear(FovOriginals)
     end
 
-    WorldLeft:AddToggle("FovToggle", {
+    CameraBox:AddToggle("FovToggle", {
         Text = "High Fov",
         Default = false,
     })
 
-    WorldLeft:AddSlider("FovSlider", {
+    CameraBox:AddSlider("FovSlider", {
         Text = "Field of View",
         Default = 80,
         Min = 50,
@@ -3439,7 +3464,7 @@ do
         end
     end)
 
-    WorldLeft:AddToggle("BestESP", {
+    WorldESP:AddToggle("BestESP", {
         Text = "Red Crate ESP",
         Default = false,
         Disabled = not Drawing,
@@ -3601,7 +3626,7 @@ do
         end
     end)
 
-    WorldLeft:AddToggle("SafeESP", {
+    WorldESP:AddToggle("SafeESP", {
         Text = "Safe ESP",
         Default = false,
         Disabled = not Drawing,
@@ -3617,7 +3642,7 @@ do
         end
     end)
 
-    WorldRight:AddDropdown("SafeFilter", {
+    WorldESP:AddDropdown("SafeFilter", {
         Text = "Safe Filter",
         Values = { "All", "MediumSafe", "Register", "SmallSafe" },
         Default = 1,
@@ -3806,7 +3831,7 @@ do
         end
     end)
 
-    WorldLeft:AddToggle("PileESP", {
+    WorldESP:AddToggle("PileESP", {
         Text = "Pile ESP",
         Default = false,
         Disabled = not Drawing,
@@ -3822,7 +3847,7 @@ do
         end
     end)
 
-    WorldRight:AddDropdown("PileFilter", {
+    WorldESP:AddDropdown("PileFilter", {
         Text = "Pile Filter",
         Values = { "All", "S1", "S2" },
         Default = 1,
@@ -3938,7 +3963,7 @@ do
         end
     end
 
-    WorldLeft:AddToggle("DealerESP", {
+    WorldESP:AddToggle("DealerESP", {
         Text = "Dealer ESP",
         Default = false,
     })
@@ -3993,11 +4018,13 @@ do
 end
 
 -- =========================
--- Misc
+-- Automation
 -- =========================
 do
-local MiscLeft = Tabs.Misc:AddLeftGroupbox("Misc", "star")
-local MiscRight = Tabs.Misc:AddRightGroupbox("Auto", "rotate-ccw")
+local MiscRight = Tabs.Automation:AddLeftGroupbox("Loot & Crates", "package")
+local Doors = Tabs.Automation:AddRightGroupbox("Doors", "door-open")
+local MiscLeft = Tabs.Automation:AddLeftGroupbox("Interactions", "hand")
+local Lockpicking = Tabs.Automation:AddRightGroupbox("Lockpicking", "key-round")
 
 local Distance = 10
 local LastCollect = 0
@@ -4159,7 +4186,7 @@ local function getClosestDoor()
 end
 
 -- TOGGLE
-local OpenToggle = MiscRight:AddToggle("AutoOpenDoor", {
+local OpenToggle = Doors:AddToggle("AutoOpenDoor", {
     Text = "Auto Open Door",
     Default = false,
 })
@@ -4205,7 +4232,7 @@ local AutoDoor = false
 local AutoDoorThread
 
 -- TOGGLE
-local MyToggle = MiscRight:AddToggle("AutoDoor", {
+local MyToggle = Doors:AddToggle("AutoDoor", {
     Text = "Auto Unlock Door",
     Default = false,
 })
@@ -4388,7 +4415,7 @@ Runtime.Connect(UIS.TouchStarted, function(_, gp)
     interactAll()
 end)
 
-local AutoLockpick = MiscLeft:AddToggle("AutoLockpick", {
+local AutoLockpick = Lockpicking:AddToggle("AutoLockpick", {
     Text = "Auto Lockpick",
     Default = false,
 })
@@ -4504,8 +4531,8 @@ end
 -- Player
 -- =========================
 do
-    local PlayerLeft = Tabs.Player:AddLeftGroupbox("Local Player", "user")
-    local PlayerRight = Tabs.Player:AddRightGroupbox("Players", "users")
+    local PlayerLeft = Tabs.Player:AddLeftGroupbox("Movement & Stamina", "user")
+    local PlayerRight = Tabs.Player:AddRightGroupbox("Spectate", "users")
 
     -- SERVICES
     local Players = game:GetService("Players")
