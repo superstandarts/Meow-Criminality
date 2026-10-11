@@ -3346,10 +3346,10 @@ do
     local espEnabled = false
     local espObjects = {}
 
-    local crateFilter = workspace:WaitForChild("Filter")
-    if Library.Unloaded then return end
-    local crateContainer = crateFilter:WaitForChild("SpawnedPiles")
-    if Library.Unloaded then return end
+    local crateFilter = workspace:FindFirstChild("Filter") or workspace:WaitForChild("Filter", 5)
+    if Library.Unloaded or not crateFilter then return end
+    local crateContainer = crateFilter:FindFirstChild("SpawnedPiles") or crateFilter:WaitForChild("SpawnedPiles", 5)
+    if Library.Unloaded or not crateContainer then return end
 
     local function isBest(particle)
         if not particle or not particle:IsA("ParticleEmitter") then
@@ -3482,10 +3482,10 @@ do
     local safeEspEnabled = false
     local safeEspObjects = {}
 
-    local map = workspace:WaitForChild("Map")
-    if Library.Unloaded then return end
-    local safeContainer = map:WaitForChild("BredMakurz")
-    if Library.Unloaded then return end
+    local map = workspace:FindFirstChild("Map") or workspace:WaitForChild("Map", 5)
+    if Library.Unloaded or not map then return end
+    local safeContainer = map:FindFirstChild("BredMakurz") or map:WaitForChild("BredMakurz", 5)
+    if Library.Unloaded or not safeContainer then return end
 
     local selectedSafeFilter = "All"
 

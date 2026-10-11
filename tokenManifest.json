@@ -10,16 +10,16 @@
     "stringCount": 881
   },
   "featureBody": {
-    "tokenSha256": "6b2d5b4aa0c16ac4c32d2009e4fd57e03b05df336a6ae36758bd0ad79d501293",
-    "stringSha256": "1c77bb8989cfce7404c482d0d883fef94073e9d137c2a498a0d603071f806f21",
-    "tokenCount": 24513,
-    "stringCount": 897
+    "tokenSha256": "e5af7db3e6187c56927935149f74e4c330551c331c05d88de7eaa92b79afb046",
+    "stringSha256": "cf04ca802437a1e26ca6461deaff1ad3682494994034710172a9d22a8227c4e6",
+    "tokenCount": 24561,
+    "stringCount": 901
   },
   "features": {
-    "tokenSha256": "e6544167b895d8e1e8218f39b76790db2450e14370ebccca084233c09f70f326",
-    "stringSha256": "1c77bb8989cfce7404c482d0d883fef94073e9d137c2a498a0d603071f806f21",
-    "tokenCount": 24564,
-    "stringCount": 897
+    "tokenSha256": "a0a1baf8a374c3e4f9e3104d6d063d5b4c7d070192f34229a94a99a4bbc5ff4b",
+    "stringSha256": "cf04ca802437a1e26ca6461deaff1ad3682494994034710172a9d22a8227c4e6",
+    "tokenCount": 24612,
+    "stringCount": 901
   },
   "windUI": {
     "rawSha256": "e29ebad6907d6293731d1de042d6aec4a9428fcddbed8a8f19ef5f4ce05c6d05",
