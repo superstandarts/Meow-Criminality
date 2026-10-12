@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const ORIGINAL = String.raw`C:\Users\skyzl\OneDrive\Documentos\Criminality.luau`;
 const FORMAT = 'luau-lexical-v1';
+const KEY_GUARD = 'if not EndHubKeyGate.Authorize() then return end';
 const GUARD = `local environment = (getgenv and getgenv()) or _G
-local previousLibrary = environment.__MEOW_CRIMINALITY_LIBRARY
+local previousLibrary = environment.__ENDHUB_CRIMINALITY_LIBRARY or environment.__MEOW_CRIMINALITY_LIBRARY
 if previousLibrary and not previousLibrary.Unloaded then
     previousLibrary:Unload()
-end`;
+end
+environment.__MEOW_CRIMINALITY_LIBRARY = nil`;
 const LOADER = `local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(
@@ -210,7 +212,7 @@ function fingerprint(input) {
 function splitFeatures(source) {
     const { tokens } = scan(source);
     let offset = 0;
-    for (const [label, expected] of [['environment/unload guard', GUARD], ['Obsidian loader', LOADER], ['Runtime anchor', RUNTIME]]) {
+    for (const [label, expected] of [['key gate', KEY_GUARD], ['environment/unload guard', GUARD], ['Obsidian loader', LOADER], ['Runtime anchor', RUNTIME]]) {
         for (const token of scan(expected).tokens) {
             const actual = tokens[offset++];
             if (!actual || actual.kind !== token.kind || actual.value !== token.value) {
@@ -218,7 +220,7 @@ function splitFeatures(source) {
             }
         }
     }
-    const guardCount = scan(GUARD).tokens.length;
+    const guardCount = scan(KEY_GUARD).tokens.length + scan(GUARD).tokens.length;
     const loaderCount = scan(LOADER).tokens.length;
     return { loaderStart: tokens[guardCount].start, runtimeStart: tokens[guardCount + loaderCount].start };
 }
@@ -282,14 +284,37 @@ async function build(options) {
     const source = textOf(features);
     const result = assertCommentFree(source, 'Features.luau');
     const featureBody = source.slice(splitFeatures(source).runtimeStart);
+    const config = JSON.parse(await fs.readFile(path.join(ROOT, 'endhub.config.json'), 'utf8'));
+    const serviceUrl = config.keyServiceUrl;
+    if (typeof serviceUrl !== 'string' || (serviceUrl && !/^https:\/\/[a-zA-Z0-9.-]+\/?$/.test(serviceUrl))) {
+        throw new Error('keyServiceUrl must be an HTTPS origin or empty while deployment is pending');
+    }
+    const modules = await Promise.all(['KeyGate', 'Movement', 'FreeCam'].map(async name => {
+        const body = await fs.readFile(path.join(ROOT, `${name}.luau`), 'utf8');
+        assertCommentFree(body, `${name}.luau`);
+        return `local EndHub${name} = (function()\n${body}\nend)()\n`;
+    }));
+    const bundle = Buffer.from(`local ENDHUB_SERVICE_URL = ${JSON.stringify(serviceUrl)}\n${modules.join('\n')}\n${source}`, 'utf8');
+    assertCommentFree(bundle, 'Criminality.luau');
     const output = path.join(ROOT, 'Criminality.luau');
     const writes = [output];
     if (options['output-copy']) writes.push(options['output-copy']);
     for (const filename of writes) await writable(filename);
     for (const filename of writes) {
-        await write(filename, features);
-        if (!features.equals(await fs.readFile(filename))) throw new Error(`Output bytes differ: ${filename}`);
+        await write(filename, bundle);
+        if (!bundle.equals(await fs.readFile(filename))) throw new Error(`Output bytes differ: ${filename}`);
     }
+    const publicRoot = path.join(ROOT, 'key-service', 'public');
+    await directory(publicRoot);
+    const logoPath = path.join(publicRoot, 'logo.png');
+    const logoSource = String.raw`C:\Users\skyzl\Downloads\endhubbbb.png`;
+    const logo = await fs.readFile(logoSource).catch(async error => {
+        if (error.code !== 'ENOENT') throw error;
+        return fs.readFile(logoPath);
+    });
+    if (!logo.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error('EndHub logo must be a PNG');
+    await write(logoPath, logo);
+    await write(path.join(publicRoot, 'Criminality.luau'), bundle);
     return {
         output,
         outputCopy: options['output-copy'] ?? null,
@@ -297,7 +322,8 @@ async function build(options) {
         features: fingerprint(source),
         featureBody: fingerprint(featureBody),
         comments: { 'Features.luau': result.comments.length, 'Criminality.luau': result.comments.length },
-        bundleSha256: sha256(features),
+        bundleSha256: sha256(bundle),
+        keyServiceConfigured: serviceUrl !== '',
         compilation: 'not performed',
         execution: 'not performed',
     };

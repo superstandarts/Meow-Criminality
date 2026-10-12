@@ -1,9 +1,11 @@
- 
+if not EndHubKeyGate.Authorize() then return end
+
 local environment = (getgenv and getgenv()) or _G
-local previousLibrary = environment.__MEOW_CRIMINALITY_LIBRARY
+local previousLibrary = environment.__ENDHUB_CRIMINALITY_LIBRARY or environment.__MEOW_CRIMINALITY_LIBRARY
 if previousLibrary and not previousLibrary.Unloaded then
 	previousLibrary:Unload()
 end
+environment.__MEOW_CRIMINALITY_LIBRARY = nil
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
@@ -34,7 +36,7 @@ function Runtime.Spawn(callback)
 		local ok, err = pcall(callback)
 		Runtime.Threads[coroutine.running()] = nil
 		if not ok and not Library.Unloaded then
-			warn("[Meow] " .. tostring(err))
+			warn("[EndHub] " .. tostring(err))
 		end
 	end)
 	Runtime.Threads[thread] = true
@@ -44,13 +46,13 @@ end
 function Runtime.Cancel(thread)
 	if not thread then return end
 	Runtime.Threads[thread] = nil
-	if coroutine.status(thread) ~= "dead" then
+	if thread ~= coroutine.running() and coroutine.status(thread) ~= "dead" then
 		pcall(task.cancel, thread)
 	end
 end
 
-local replacedLibrary = environment.__MEOW_CRIMINALITY_LIBRARY
-environment.__MEOW_CRIMINALITY_LIBRARY = Library
+local replacedLibrary = environment.__ENDHUB_CRIMINALITY_LIBRARY
+environment.__ENDHUB_CRIMINALITY_LIBRARY = Library
 if replacedLibrary and replacedLibrary ~= Library and not replacedLibrary.Unloaded then
 	replacedLibrary:Unload()
 end
@@ -59,8 +61,8 @@ Library:OnUnload(function()
 	for thread in pairs(Runtime.Threads) do
 		Runtime.Cancel(thread)
 	end
-	if environment.__MEOW_CRIMINALITY_LIBRARY == Library then
-		environment.__MEOW_CRIMINALITY_LIBRARY = nil
+	if environment.__ENDHUB_CRIMINALITY_LIBRARY == Library then
+		environment.__ENDHUB_CRIMINALITY_LIBRARY = nil
 	end
 end)
 
@@ -114,13 +116,13 @@ Camera = cam
  
  
 local Window = Library:CreateWindow({
-	Title = "Meow",
-	Icon = "cat",
+	Title = "EndHub",
+	Icon = EndHubKeyGate.Logo(),
 	ShowCustomCursor = false,
 	DisableSearch = false,
 	Size = UDim2.fromOffset(740, 540),
 	IconSize = UDim2.fromOffset(40, 40),
-	Footer = "meow made by predaybowie on discord",
+	Footer = "Powered by EndHub",
 	NotifySide = "Right",
 	Resizable = true,
 	ToggleKeybind = Enum.KeyCode.RightControl,
@@ -222,7 +224,7 @@ SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 SaveManager:SetLoadingOrder(true, { "Input", "ColorPicker", "Slider", "Dropdown", "Toggle", "KeyPicker" })
-ThemeManager:SetFolder("Meow")
+ThemeManager:SetFolder("EndHub")
 ThemeManager:SetDefaultTheme({
 	MainColor = "191919",
 	FontFace = "Code",
@@ -231,7 +233,7 @@ ThemeManager:SetDefaultTheme({
 	BackgroundColor = "0f0f0f",
 	FontColor = "ffffff",
 })
-SaveManager:SetFolder("Meow")
+SaveManager:SetFolder("EndHub")
 SaveManager:SetSubFolder("Criminality")
 SaveManager:BuildConfigSection(Tabs.Settings)
 ThemeManager:ApplyToTab(Tabs.Settings)
@@ -283,7 +285,7 @@ do
 	SystemBox:AddLabel({ Text = "Executor: <font color='#aec6cf'>" .. executorName .. "</font>" })
 
 	 
-	CommunityBox:AddLabel({ Text = "<b>Meow</b>", DoesWrap = true })
+	CommunityBox:AddLabel({ Text = "<b>EndHub</b>", DoesWrap = true })
 
 	local uptimeLabel = CommunityBox:AddLabel({ Text = "Uptime: 00:00:00" })
 	local serverTimeLabel = CommunityBox:AddLabel({ Text = "Time: " .. os.date("%X") })
@@ -340,13 +342,13 @@ do
 				})
 
 				Library:Notify({
-					Title = "Meow",
+					Title = "EndHub",
 					Description = "Opening Discord App...",
 					Time = 4,
 				})
 			else
 				Library:Notify({
-					Title = "Meow",
+					Title = "EndHub",
 					Description = "Invite copied to clipboard!",
 					Time = 4,
 				})
@@ -395,7 +397,7 @@ do
 		LastNotification = tick()
 
 		Library:Notify({
-			Title = "Meow",
+			Title = "EndHub",
 			Description = desc,
 			Time = time or 4,
 		})
@@ -569,7 +571,7 @@ do
 	 
 	 
 	local RangePart = Instance.new("Part")
-	RangePart.Name = "MeowAuraRange"
+	RangePart.Name = "EndHubAuraRange"
 	RangePart.Anchored = true
 	RangePart.CanCollide = false
 	RangePart.CanQuery = false
@@ -631,7 +633,7 @@ do
 	 
 	 
 	local HitGui = Instance.new("ScreenGui")
-	HitGui.Name = "MeowHitFX"
+	HitGui.Name = "EndHubHitFX"
 	HitGui.IgnoreGuiInset = true
 	HitGui.ResetOnSpawn = false
 	HitGui.Parent = CoreGui
@@ -1269,15 +1271,16 @@ do
     local aimTarget
     local aimTargetAccumulator = 0
     Runtime.Connect(RunService.Heartbeat, function(deltaTime)
-        if not on then return end
+        if not on or (Toggles.FreeCamToggle and Toggles.FreeCamToggle.Value) then return end
         aimTargetAccumulator += deltaTime
         if aimTargetAccumulator >= (1 / 30) then
             aimTargetAccumulator %= (1 / 30)
             aimTarget = getClosestTarget()
         end
     end)
-    RunService:BindToRenderStep("MeowAimbot", Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
+    RunService:BindToRenderStep("EndHubAimbot", Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
         if Library.Unloaded or not cam then return end
+        if Toggles.FreeCamToggle and Toggles.FreeCamToggle.Value then return end
         if fovCircle and on then
             local vp = cam.ViewportSize
             fovCircle.Position = Vector2.new(vp.X/2, vp.Y/2)
@@ -1556,7 +1559,7 @@ do
 
     AimbotRight:AddToggle("InstantPelletDelivery", {
         Text = "Instant Pellet Delivery", Default = false,
-        Tooltip = "For Silent Aim / Magic Bullet: sends the existing projectiles of one shot without Meow's delay. Does not fire a whole magazine, create extra bullets, or guarantee a kill.",
+        Tooltip = "For Silent Aim / Magic Bullet: sends the existing projectiles of one shot without EndHub's delay. Does not fire a whole magazine, create extra bullets, or guarantee a kill.",
     })
     Toggles.InstantPelletDelivery:OnChanged(function(state)
         SA.InstantPelletDelivery = state
@@ -1633,7 +1636,7 @@ do
     Library:OnUnload(function()
         on = false
         aimTarget = nil
-        RunService:UnbindFromRenderStep("MeowAimbot")
+        RunService:UnbindFromRenderStep("EndHubAimbot")
         SA.On = false
         SA.MagicBullet = false
         syncSARuntime()
@@ -1730,11 +1733,11 @@ if UseCheapESP then
     })
 
     local ESPFolder = Instance.new("Folder")
-    ESPFolder.Name = "MeowESP"
+    ESPFolder.Name = "EndHubESP"
     ESPFolder.Parent = CoreGui
 
     local LineGui = Instance.new("ScreenGui")
-    LineGui.Name = "MeowESPTracers"
+    LineGui.Name = "EndHubESPTracers"
     LineGui.IgnoreGuiInset = true
     LineGui.ResetOnSpawn = false
     LineGui.Enabled = false
@@ -3313,6 +3316,8 @@ do
         Default = false,
     })
 
+    EndHubFreeCam({ Library = Library, Runtime = Runtime, LocalPlayer = LocalPlayer, Group = CameraBox })
+
     CameraBox:AddSlider("FovSlider", {
         Text = "Field of View",
         Default = 80,
@@ -4715,116 +4720,14 @@ do
         end
     end)
 
-    local movementConnection
-    local movementCharacter
-    local movementOriginals = {}
-
-    local function stopMovement()
-        if movementConnection then
-            movementConnection:Disconnect()
-            movementConnection = nil
-        end
-        movementCharacter = nil
-        for hum, original in pairs(movementOriginals) do
-            if hum.Parent then
-                if original.WalkSpeed ~= nil then hum.WalkSpeed = original.WalkSpeed end
-                if original.JumpPower ~= nil then
-                    hum.JumpPower = original.JumpPower
-                    hum.UseJumpPower = original.UseJumpPower
-                end
-            end
-        end
-        table.clear(movementOriginals)
-    end
-
-    local function syncMovement()
-        if Library.Unloaded then return end
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildWhichIsA("Humanoid")
-        if not hum then return end
-        local original = movementOriginals[hum]
-        if not original then
-            original = {}
-            movementOriginals[hum] = original
-        end
-        if Toggles.WalkSpeedToggle.Value then
-            if original.WalkSpeed == nil then original.WalkSpeed = hum.WalkSpeed end
-            if hum.WalkSpeed ~= Options.WalkSpeedSlider.Value then
-                hum.WalkSpeed = Options.WalkSpeedSlider.Value
-            end
-        elseif original.WalkSpeed ~= nil then
-            hum.WalkSpeed = original.WalkSpeed
-            original.WalkSpeed = nil
-        end
-        if Toggles.JumpPowerToggle.Value then
-            if original.JumpPower == nil then
-                original.JumpPower = hum.JumpPower
-                original.UseJumpPower = hum.UseJumpPower
-            end
-            if not hum.UseJumpPower then hum.UseJumpPower = true end
-            if hum.JumpPower ~= Options.JumpPowerSlider.Value then
-                hum.JumpPower = Options.JumpPowerSlider.Value
-            end
-        elseif original.JumpPower ~= nil then
-            hum.JumpPower = original.JumpPower
-            hum.UseJumpPower = original.UseJumpPower
-            original.JumpPower = nil
-            original.UseJumpPower = nil
-        end
-    end
-
-    PlayerLeft:AddSlider("WalkSpeedSlider", {
-        Text = "Walk Speed",
-        Min = 16,
-        Max = 250,
-        Default = 32,
-        Rounding = 0,
-    })
-
-    PlayerLeft:AddToggle("WalkSpeedToggle", {
-        Text = "Enable Walk Speed",
-        Default = false,
-    })
-
-    PlayerLeft:AddSlider("JumpPowerSlider", {
-        Text = "Jump Power",
-        Min = 50,
-        Max = 300,
-        Default = 100,
-        Rounding = 0,
-    })
-
-    PlayerLeft:AddToggle("JumpPowerToggle", {
-        Text = "Enable Jump Power",
-        Default = false,
-    })
-
-    Toggles.WalkSpeedToggle:OnChanged(syncMovement)
-    Toggles.JumpPowerToggle:OnChanged(syncMovement)
-    Options.WalkSpeedSlider:OnChanged(syncMovement)
-    Options.JumpPowerSlider:OnChanged(syncMovement)
-
-    local function bindMovementCharacter(character)
-        stopMovement()
-        if Library.Unloaded then return end
-        movementCharacter = character
-        movementConnection = Runtime.Connect(character.ChildAdded, function(child)
-            if child:IsA("Humanoid") then syncMovement() end
-        end)
-        syncMovement()
-    end
-
-    Runtime.Connect(LocalPlayer.CharacterAdded, bindMovementCharacter)
-    Runtime.Connect(LocalPlayer.CharacterRemoving, function(character)
-        if character == movementCharacter then stopMovement() end
-    end)
-    if LocalPlayer.Character then bindMovementCharacter(LocalPlayer.Character) end
+    local movement = EndHubMovement({ Library = Library, Runtime = Runtime, LocalPlayer = LocalPlayer, PlayerGroup = PlayerLeft })
 
     local SelectedPlayer = nil
     local Spectating = false
     local SpectateSubjects = {}
 
     local function SetSpectateSubject(humanoid)
+        if Toggles.FreeCamToggle and Toggles.FreeCamToggle.Value then return end
         local camera = workspace.CurrentCamera
         if not camera then return end
         if not SpectateSubjects[camera] then
@@ -5030,16 +4933,27 @@ Toggles.NoclipToggle:OnChanged(function(state)
 end)
 
 Library:OnUnload(function()
-    disableStamina()
-    stopMovement()
-    StopSpectate()
+    pcall(disableStamina)
+    movement.Stop()
+    pcall(StopSpectate)
     SelectedPlayer = nil
     noclipEnabled = false
-    clearNoclipCharacter()
+    pcall(clearNoclipCharacter)
 end)
 end
 
  
+SettingsGroupLeft:AddButton("Load Saved Autoload (Explicit)", function()
+    Runtime.Spawn(function() SaveManager:LoadAutoloadConfig() end)
+end)
 Runtime.Spawn(function()
-    SaveManager:LoadAutoloadConfig()
+    while not Library.Unloaded do
+        task.wait(300)
+        if Library.Unloaded then return end
+        if not EndHubKeyGate.Validate() then
+            Library:Unload()
+            warn("[EndHub] Key validation failed; script unloaded.")
+            return
+        end
+    end
 end)

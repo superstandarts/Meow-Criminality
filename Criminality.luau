@@ -1,9 +1,713 @@
- 
+local ENDHUB_SERVICE_URL = "https://endhub-key-service.ragerdtkeys.workers.dev"
+local EndHubKeyGate = (function()
+local environment = (type(getgenv) == "function" and getgenv()) or _G
+local service = environment.__ENDHUB_KEY_SERVICE_URL
+if service == nil then service = ENDHUB_SERVICE_URL end
+local requestAPI = (syn and syn.request) or (http and http.request) or http_request or request
+local memory
+local pattern = "^END%-%d%d%d%d%-%d%d%d%d%-%d%d%d%d%-%d%d%d%d$"
+local plans = { weekly = true, monthly = true, ["60days"] = true, permanent = true }
+local configured = false
+if type(service) == "string" then
+    local host = service:match("^https://([%w%.%-]+)/?$")
+    if host and #host <= 253 and host:find("%.") and not host:find("%.%.")
+        and not host:lower():find("placeholder", 1, true) and not host:lower():find("your-", 1, true) then
+        configured = true
+        for label in host:gmatch("[^%.]+") do
+            if #label > 63 or not label:match("^[%w].*[%w]$") and not label:match("^[%w]$") then configured = false end
+        end
+        if host:sub(1, 1) == "." or host:sub(-1) == "." then configured = false end
+    end
+end
+if configured then service = service:gsub("/$", "") end
+
+local function Validate()
+    if not configured then return false, "Key service is not configured" end
+    if type(requestAPI) ~= "function" then return false, "This executor cannot send key validation requests" end
+    if type(memory) ~= "string" or not memory:match(pattern) then return false, "Use END-0000-0000-0000-0000" end
+    local ok, response, data = pcall(function()
+        local httpService = game:GetService("HttpService")
+        local reply = requestAPI({ Url = service .. "/v1/validate", Method = "POST",
+            Headers = { ["Content-Type"] = "application/json", Accept = "application/json" },
+            Body = httpService:JSONEncode({ key = memory }) })
+        if type(reply) ~= "table" or type(reply.Body) ~= "string" then return reply, nil end
+        if reply.StatusCode ~= 200 then return reply, nil end
+        assert(utf8.len(reply.Body) and reply.Body:match("^%s*{"))
+        return reply, httpService:JSONDecode(reply.Body)
+    end)
+    if not ok then return false, "Key service is unavailable" end
+    local status = type(response) == "table" and response.StatusCode
+    if status == 403 then return false, "Key is invalid, expired, or revoked" end
+    if status == 429 then return false, "Too many attempts. Try again later" end
+    if status == 503 then return false, "Key service is unavailable" end
+    if status ~= 200 or type(data) ~= "table" or data[1] ~= nil
+        or data.valid ~= true or type(data.plan) ~= "string" or not plans[data.plan]
+        or data.message ~= nil and type(data.message) ~= "string" then
+        return false, "Key validation failed"
+    end
+    if data.plan == "permanent" then
+        if data.expiresAt ~= false then return false, "Key validation failed" end
+    else
+        if type(data.expiresAt) ~= "string" or not data.expiresAt:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%d%.?%d*Z$") then
+            return false, "Key validation failed"
+        end
+        local parsed, expiry = pcall(function() return DateTime.fromIsoDate(data.expiresAt).UnixTimestamp end)
+        if not parsed or type(expiry) ~= "number" or not (expiry > os.time()) then return false, "Key is expired" end
+    end
+    return true, "Key accepted"
+end
+
+local function keyUI(message)
+    local parent
+    if type(gethui) == "function" then
+        local ok, value = pcall(gethui)
+        if ok then parent = value end
+    end
+    if not parent then
+        pcall(function()
+            local player = game:GetService("Players").LocalPlayer
+            parent = player and player:FindFirstChildOfClass("PlayerGui")
+        end)
+    end
+    if not parent then warn("[EndHub] No GUI parent is available"); return false end
+    local gui, key, status, submit, close
+    local created = pcall(function()
+        local function new(class, owner, properties)
+            local item = Instance.new(class)
+            if class == "ScreenGui" then gui = item end
+            for name, value in pairs(properties) do item[name] = value end
+            item.Parent = owner
+            return item
+        end
+        gui = new("ScreenGui", parent, { Name = "EndHubKey", ResetOnSpawn = false, DisplayOrder = 2147483647, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+        local frame = new("Frame", gui, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.9, 0, 0, 270), BackgroundColor3 = Color3.fromRGB(20, 23, 30) })
+        new("UISizeConstraint", frame, { MaxSize = Vector2.new(420, 270) })
+        new("UICorner", frame, { CornerRadius = UDim.new(0, 12) })
+        local function text(class, name, value, y, height)
+            return new(class, frame, { Name = name, Text = value, Position = UDim2.new(0, 20, 0, y), Size = UDim2.new(1, -40, 0, height), BackgroundColor3 = Color3.fromRGB(32, 37, 48), TextColor3 = Color3.fromRGB(235, 239, 247), TextSize = 16, Font = Enum.Font.Gotham, BorderSizePixel = 0 })
+        end
+        text("TextLabel", "Title", "EndHub", 15, 35)
+        key = text("TextBox", "Key", "", 65, 40)
+        key.PlaceholderText, key.ClearTextOnFocus = "END-0000-0000-0000-0000", false
+        status = text("TextLabel", "Status", message, 115, 45)
+        status.TextWrapped, status.TextSize = true, 14
+        submit = text("TextButton", "Submit", "Submit", 170, 36)
+        text("TextLabel", "Footer", "Powered by EndHub", 225, 25).TextSize = 12
+        close = new("TextButton", frame, { Name = "Close", Text = "X", Position = UDim2.new(1, -35, 0, 10), Size = UDim2.fromOffset(25, 25), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(235, 239, 247), TextSize = 18 })
+    end)
+    if not created then
+        if gui then pcall(function() gui:Destroy() end) end
+        warn("[EndHub] Key interface is unavailable")
+        return false
+    end
+    local accepted, closed, busy = false, false, false
+    local connections, worker, last = {}, nil, -math.huge
+    local attached = parent:IsDescendantOf(game)
+    local function present()
+        return gui.Parent == parent and (not attached or gui:IsDescendantOf(game))
+    end
+    local function dispose()
+        for _, connection in ipairs(connections) do connection:Disconnect() end
+        if worker and worker ~= coroutine.running() then pcall(task.cancel, worker) end
+        gui:Destroy()
+    end
+    local function stop()
+        if closed or accepted then return end
+        closed, memory = true, nil
+        dispose()
+    end
+    local function send()
+        if closed or accepted or busy or os.clock() - last < 2 then return end
+        if not present() then stop(); return end
+        if not key.Text:match(pattern) then status.Text = "Use END-0000-0000-0000-0000"; return end
+        busy, last, memory = true, os.clock(), key.Text
+        status.Text = "Checking key..."
+        worker = task.defer(function()
+            local valid, result = Validate()
+            busy = false
+            if closed then return end
+            if not present() then stop(); return end
+            if valid then accepted = true; dispose() else memory = nil; status.Text = result end
+        end)
+    end
+    table.insert(connections, close.Activated:Connect(stop))
+    table.insert(connections, submit.Activated:Connect(send))
+    table.insert(connections, key.FocusLost:Connect(function(enter) if enter then send() end end))
+    table.insert(connections, gui.Destroying:Connect(stop))
+    table.insert(connections, gui.AncestryChanged:Connect(function() if not present() then stop() end end))
+    while not accepted and not closed do
+        if not present() then stop() else task.wait(0.1) end
+    end
+    return accepted and not closed
+end
+
+local function Authorize()
+    local candidate = memory or environment.__ENDHUB_KEY
+    environment.__ENDHUB_KEY = nil
+    memory = candidate
+    local valid, message = Validate()
+    if valid then return true end
+    memory = nil
+    return keyUI(message)
+end
+
+local function Logo()
+    local ok, asset = pcall(function()
+        assert(configured and type(writefile) == "function" and type(isfolder) == "function")
+        local customAsset = getcustomasset or getsynasset
+        assert(type(customAsset) == "function")
+        local bytes
+        if type(requestAPI) == "function" then
+            local response = requestAPI({ Url = service .. "/logo.png", Method = "GET" })
+            assert(type(response) == "table" and response.StatusCode == 200)
+            bytes = response.Body
+        else bytes = game:HttpGet(service .. "/logo.png") end
+        assert(type(bytes) == "string" and #bytes < 2 * 1024 * 1024 and bytes:sub(1, 8) == "\137PNG\r\n\26\n")
+        if not isfolder("EndHub") then assert(type(makefolder) == "function"); makefolder("EndHub") end
+        writefile("EndHub/logo.png", bytes)
+        local value = customAsset("EndHub/logo.png")
+        assert(type(value) == "string" and value ~= "")
+        return value
+    end)
+    if ok then return asset end
+    warn("[EndHub] Logo is unavailable; using shield icon")
+    return "shield"
+end
+
+return { Authorize = Authorize, Validate = Validate, Logo = Logo }
+
+end)()
+
+local EndHubMovement = (function()
+return function(ctx)
+    local Library = ctx.Library
+    local Runtime = ctx.Runtime
+    local LocalPlayer = ctx.LocalPlayer
+    local group = ctx.PlayerGroup or ctx.PlayerLeft
+    local records = setmetatable({}, { __mode = "k" })
+    local pendingTasks = {}
+    local connections = {}
+    local characterConnections = {}
+    local character
+    local humanoid
+    local diedConnection
+    local stopped = false
+    local controls = {}
+    local states = { Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.FallingDown }
+
+    local function disconnect(list)
+        for _, connection in ipairs(list) do
+            pcall(function() connection:Disconnect() end)
+        end
+        table.clear(list)
+    end
+
+    local function connect(signal, callback, list)
+        if signal then
+            local connection = Runtime.Connect(signal, callback)
+            if connection then table.insert(list, connection) end
+            return connection
+        end
+    end
+
+    local function cancel(property)
+        local ticket = pendingTasks[property]
+        pendingTasks[property] = nil
+        if ticket and ticket.Thread and ticket.Thread ~= coroutine.running() then
+            Runtime.Cancel(ticket.Thread)
+        end
+    end
+
+    local function getHumanoid()
+        if stopped or Library.Unloaded then return nil end
+        local ok, result = pcall(function()
+            if not character or character ~= LocalPlayer.Character or not character.Parent
+                or not character:IsDescendantOf(workspace) then return nil end
+            local hum = character:FindFirstChildWhichIsA("Humanoid")
+            if hum and hum.Parent == character and hum.Health > 0 then return hum end
+            return nil
+        end)
+        return ok and result or nil
+    end
+
+    local function recordFor(hum)
+        local record = records[hum]
+        if not record then
+            record = { Properties = {}, States = {} }
+            records[hum] = record
+        end
+        return record
+    end
+
+    local function writeProperty(hum, property, value)
+        local ok, current = pcall(function() return hum[property] end)
+        if not ok or current == value then return end
+        local entries = recordFor(hum).Properties
+        local entry = entries[property]
+        if not entry then
+            entry = { Original = current }
+            entries[property] = entry
+        end
+        if pcall(function() hum[property] = value end) then entry.LastApplied = value end
+    end
+
+    local function restoreProperty(hum, record, property)
+        local entry = record.Properties[property]
+        if not entry then return end
+        pcall(function()
+            if entry.LastApplied ~= nil and hum[property] == entry.LastApplied then
+                hum[property] = entry.Original
+            end
+        end)
+        record.Properties[property] = nil
+    end
+
+    local function restoreStates(hum, record)
+        for state, entry in pairs(record.States) do
+            pcall(function()
+                if entry.LastApplied == false and hum:GetStateEnabled(state) == false then
+                    hum:SetStateEnabled(state, entry.Original)
+                end
+            end)
+            record.States[state] = nil
+        end
+    end
+
+    local function restoreAll()
+        for hum, record in pairs(records) do
+            restoreProperty(hum, record, "WalkSpeed")
+            restoreProperty(hum, record, "JumpPower")
+            restoreProperty(hum, record, "UseJumpPower")
+            restoreStates(hum, record)
+            records[hum] = nil
+        end
+    end
+
+    local function valueFor(property)
+        local value = controls[property .. "Slider"].Value
+        local minimum = property == "WalkSpeed" and 16 or 50
+        local maximum = property == "WalkSpeed" and 80 or 120
+        if type(value) ~= "number" or value ~= value or value <= 0 or value == math.huge then
+            return minimum
+        end
+        return math.clamp(value, minimum, maximum)
+    end
+
+    local function apply(property)
+        local hum = getHumanoid()
+        if not hum or hum ~= humanoid or controls[property .. "Toggle"].Value ~= true then return end
+        if property == "JumpPower" then writeProperty(hum, "UseJumpPower", true) end
+        writeProperty(hum, property, valueFor(property))
+    end
+
+    local function applyStates()
+        local hum = getHumanoid()
+        if not hum or hum ~= humanoid or controls.NoRagdoll.Value ~= true then return end
+        for _, state in ipairs(states) do
+            local ok, current = pcall(function() return hum:GetStateEnabled(state) end)
+            if ok and current == true then
+                local entries = recordFor(hum).States
+                local entry = entries[state]
+                if not entry then
+                    entry = { Original = current }
+                    entries[state] = entry
+                end
+                if pcall(function() hum:SetStateEnabled(state, false) end) then
+                    entry.LastApplied = false
+                end
+            end
+        end
+    end
+
+    local function schedule(property)
+        if stopped or Library.Unloaded or controls[property .. "Toggle"].Value ~= true
+            or not getHumanoid() or pendingTasks[property] then return end
+        local ticket = {}
+        pendingTasks[property] = ticket
+        ticket.Thread = Runtime.Spawn(function()
+            task.wait(0.15)
+            if pendingTasks[property] ~= ticket then return end
+            pendingTasks[property] = nil
+            apply(property)
+        end)
+        if not ticket.Thread then pendingTasks[property] = nil end
+    end
+
+    local function toggle(property)
+        if stopped or Library.Unloaded then return end
+        cancel(property)
+        if controls[property .. "Toggle"].Value == true then
+            apply(property)
+        else
+            for hum, record in pairs(records) do
+                restoreProperty(hum, record, property)
+                if property == "JumpPower" then restoreProperty(hum, record, "UseJumpPower") end
+            end
+        end
+    end
+
+    controls.WalkSpeedSlider = group:AddSlider("WalkSpeedSlider", {
+        Text = "Walk Speed", Min = 16, Max = 80, Default = 16, Rounding = 0,
+    })
+    controls.WalkSpeedToggle = group:AddToggle("WalkSpeedToggle", {
+        Text = "Enable Walk Speed", Default = false,
+    })
+    controls.JumpPowerSlider = group:AddSlider("JumpPowerSlider", {
+        Text = "Jump Power", Min = 50, Max = 120, Default = 50, Rounding = 0,
+    })
+    controls.JumpPowerToggle = group:AddToggle("JumpPowerToggle", {
+        Text = "Enable Jump Power", Default = false,
+    })
+    controls.NoRagdoll = group:AddToggle("NoRagdoll", {
+        Text = "No Ragdoll (Humanoid)", Default = false,
+        Tooltip = "Local Humanoid Ragdoll and FallingDown states only; custom constraints and server behavior are unaffected.",
+    })
+    local fallTooltip = "No verified server fall-damage interface; local state changes do not prevent server damage."
+    controls.NoFallDamage = group:AddToggle("NoFallDamage", {
+        Text = "No Fall Damage", Default = false, Disabled = true,
+        Tooltip = fallTooltip, DisabledTooltip = fallTooltip,
+    })
+    local setFallValue = controls.NoFallDamage.SetValue
+    controls.NoFallDamage.SetValue = function(self)
+        return setFallValue(self, false)
+    end
+    controls.NoFallDamage:SetValue(false)
+
+    controls.WalkSpeedToggle:OnChanged(function() toggle("WalkSpeed") end)
+    controls.JumpPowerToggle:OnChanged(function() toggle("JumpPower") end)
+    controls.WalkSpeedSlider:OnChanged(function() schedule("WalkSpeed") end)
+    controls.JumpPowerSlider:OnChanged(function() schedule("JumpPower") end)
+    controls.NoRagdoll:OnChanged(function()
+        if stopped or Library.Unloaded then return end
+        if controls.NoRagdoll.Value == true then
+            applyStates()
+        else
+            for hum, record in pairs(records) do restoreStates(hum, record) end
+        end
+    end)
+
+    local function releaseHumanoid()
+        cancel("WalkSpeed")
+        cancel("JumpPower")
+        if diedConnection then pcall(function() diedConnection:Disconnect() end) end
+        diedConnection = nil
+        restoreAll()
+        humanoid = nil
+    end
+
+    local function refreshHumanoid()
+        local hum = getHumanoid()
+        if hum == humanoid then return end
+        releaseHumanoid()
+        humanoid = hum
+        if not hum then return end
+        diedConnection = connect(hum.Died, function()
+            cancel("WalkSpeed")
+            cancel("JumpPower")
+        end, {})
+        apply("WalkSpeed")
+        apply("JumpPower")
+        applyStates()
+    end
+
+    local function bindCharacter(newCharacter)
+        if stopped or Library.Unloaded or newCharacter ~= LocalPlayer.Character then return end
+        disconnect(characterConnections)
+        releaseHumanoid()
+        character = newCharacter
+        if character then
+            connect(character.ChildAdded, refreshHumanoid, characterConnections)
+            connect(character.ChildRemoved, refreshHumanoid, characterConnections)
+        end
+        refreshHumanoid()
+    end
+
+    local function stop()
+        if stopped then return end
+        stopped = true
+        disconnect(connections)
+        disconnect(characterConnections)
+        releaseHumanoid()
+        character = nil
+    end
+
+    connect(LocalPlayer.CharacterAdded, bindCharacter, connections)
+    connect(LocalPlayer.CharacterRemoving, function(oldCharacter)
+        if oldCharacter ~= character then return end
+        disconnect(characterConnections)
+        releaseHumanoid()
+        character = nil
+    end, connections)
+    Library:OnUnload(stop)
+    bindCharacter(LocalPlayer.Character)
+    return { Stop = stop, Records = records, PendingTasks = pendingTasks, Controls = controls }
+end
+
+end)()
+
+local EndHubFreeCam = (function()
+return function(ctx)
+    local Library = ctx.Library
+    local Runtime = ctx.Runtime
+    local group = ctx.Group
+    local RunService = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
+    local serviceOK, ContextActionService = pcall(function()
+        return game:GetService("ContextActionService")
+    end)
+    if not serviceOK then ContextActionService = nil end
+    local controls = {}
+    local connections = {}
+    local pressed = {}
+    local active = false
+    local stopped = false
+    local renderBound = false
+    local actionBound = false
+    local camera
+    local record
+    local position
+    local pitch = 0
+    local yaw = 0
+    local mouseRecord
+    local looking = false
+    local key = Enum.KeyCode
+    local limit = math.rad(89)
+    local disable
+
+    local function releaseMouse()
+        looking = false
+        local entry = mouseRecord
+        mouseRecord = nil
+        if entry then
+            pcall(function()
+                if entry.LastApplied ~= nil and UserInputService.MouseBehavior == entry.LastApplied then
+                    UserInputService.MouseBehavior = entry.Original
+                end
+            end)
+        end
+    end
+
+    local function clearInput()
+        table.clear(pressed)
+        releaseMouse()
+    end
+
+    local function restoreCamera()
+        local oldCamera, oldRecord = camera, record
+        camera, record = nil, nil
+        if not oldCamera or not oldRecord then return end
+        for _, property in ipairs({ "CFrame", "Focus", "CameraType" }) do
+            local entry = oldRecord[property]
+            pcall(function()
+                if entry.LastApplied ~= nil and oldCamera[property] == entry.LastApplied then
+                    oldCamera[property] = entry.Original
+                end
+            end)
+        end
+    end
+
+    local function writeCamera(property, value)
+        if camera[property] == value then return end
+        camera[property] = value
+        record[property].LastApplied = value
+    end
+
+    local function applyCamera()
+        local frame = CFrame.new(position) * CFrame.fromOrientation(pitch, yaw, 0)
+        writeCamera("CFrame", frame)
+        writeCamera("Focus", CFrame.new(position + frame.LookVector * 10))
+    end
+
+    local function acquireCamera()
+        local nextCamera = workspace.CurrentCamera
+        if nextCamera == camera then return end
+        restoreCamera()
+        assert(nextCamera, "No current camera")
+        local snapshot = {}
+        for _, property in ipairs({ "CFrame", "Focus", "CameraType" }) do
+            snapshot[property] = { Original = nextCamera[property] }
+        end
+        camera, record = nextCamera, snapshot
+        position = snapshot.CFrame.Original.Position
+        pitch, yaw = snapshot.CFrame.Original:ToOrientation()
+        pitch = math.clamp(pitch, -limit, limit)
+        writeCamera("CameraType", Enum.CameraType.Scriptable)
+        applyCamera()
+    end
+
+    local function textFocused()
+        if UserInputService:GetFocusedTextBox() then
+            clearInput()
+            return true
+        end
+        return false
+    end
+
+    local function numberValue(control, default, minimum, maximum)
+        local value = control.Value
+        if type(value) ~= "number" or value ~= value or math.abs(value) == math.huge then
+            return default
+        end
+        return math.clamp(value, minimum, maximum)
+    end
+
+    disable = function()
+        active = false
+        clearInput()
+        if renderBound then
+            renderBound = false
+            pcall(function() RunService:UnbindFromRenderStep("EndHubFreeCam") end)
+        end
+        if actionBound then
+            actionBound = false
+            pcall(function() ContextActionService:UnbindAction("EndHubFreeCamInput") end)
+        end
+        for _, connection in ipairs(connections) do
+            pcall(function() connection:Disconnect() end)
+        end
+        table.clear(connections)
+        restoreCamera()
+        if controls.FreeCamToggle.Value ~= false then
+            pcall(function() controls.FreeCamToggle:SetValue(false) end)
+        end
+    end
+
+    local function guarded(callback)
+        return function(...)
+            if not active then return end
+            if stopped or Library.Unloaded then disable() return end
+            if not pcall(callback, ...) then disable() end
+        end
+    end
+
+    local function connect(signal, callback)
+        local connection = Runtime.Connect(signal, guarded(callback))
+        assert(connection, "Input connection unavailable")
+        table.insert(connections, connection)
+    end
+
+    local function inputAction(_, state, input)
+        if not active or stopped or Library.Unloaded then
+            if active then disable() end
+            return Enum.ContextActionResult.Pass
+        end
+        local ok, result = pcall(function()
+            if textFocused() then return Enum.ContextActionResult.Pass end
+            if state == Enum.UserInputState.Begin then
+                pressed[input.KeyCode] = true
+            elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+                pressed[input.KeyCode] = nil
+            end
+            return Enum.ContextActionResult.Sink
+        end)
+        if not ok then disable() return Enum.ContextActionResult.Pass end
+        return result
+    end
+
+    local function render(delta)
+        if camera and camera.CameraType ~= Enum.CameraType.Scriptable then disable() return end
+        acquireCamera()
+        if not textFocused() and type(delta) == "number" and delta == delta
+            and delta > 0 and delta < math.huge then
+            local x = (pressed[key.D] and 1 or 0) - (pressed[key.A] and 1 or 0)
+            local y = (pressed[key.E] and 1 or 0) - (pressed[key.Q] and 1 or 0)
+            local z = (pressed[key.W] and 1 or 0) - (pressed[key.S] and 1 or 0)
+            local horizontal = CFrame.fromOrientation(0, yaw, 0)
+            local direction = horizontal.RightVector * x + Vector3.new(0, y, 0) + horizontal.LookVector * z
+            if direction.Magnitude > 0 then
+                local speed = numberValue(controls.FreeCamSpeed, 32, 1, 200)
+                position += direction.Unit * speed * (pressed[key.LeftShift] and 3 or 1) * delta
+            end
+        end
+        applyCamera()
+    end
+
+    local function enable()
+        if active or stopped or Library.Unloaded then return end
+        local ok = pcall(function()
+            assert(ContextActionService and type(ContextActionService.BindActionAtPriority) == "function"
+                and type(ContextActionService.UnbindAction) == "function", "Input suppression unavailable")
+            active = true
+            actionBound = true
+            ContextActionService:BindActionAtPriority("EndHubFreeCamInput", inputAction, false, 3000,
+                key.W, key.A, key.S, key.D, key.Q, key.E, key.Space, key.LeftControl, key.LeftShift)
+            connect(UserInputService.InputBegan, function(input, processed)
+                if processed or textFocused() or input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+                if looking then return end
+                mouseRecord = { Original = UserInputService.MouseBehavior }
+                looking = true
+                if UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCurrentPosition then
+                    UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+                    mouseRecord.LastApplied = Enum.MouseBehavior.LockCurrentPosition
+                end
+            end)
+            connect(UserInputService.InputEnded, function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton2 then releaseMouse() end
+            end)
+            connect(UserInputService.InputChanged, function(input)
+                if textFocused() or not looking or input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+                if UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCurrentPosition then releaseMouse() return end
+                local sensitivity = math.rad(numberValue(controls.FreeCamSensitivity, 0.2, 0.05, 1))
+                pitch = math.clamp(pitch - input.Delta.Y * sensitivity, -limit, limit)
+                yaw -= input.Delta.X * sensitivity
+            end)
+            connect(UserInputService.WindowFocusReleased, clearInput)
+            connect(workspace:GetPropertyChangedSignal("CurrentCamera"), acquireCamera)
+            acquireCamera()
+            renderBound = true
+            RunService:BindToRenderStep("EndHubFreeCam", Enum.RenderPriority.Camera.Value + 2, guarded(render))
+        end)
+        if not ok then disable() end
+    end
+
+    controls.FreeCamToggle = group:AddToggle("FreeCamToggle", {
+        Text = "Free Cam", Default = false,
+        Tooltip = "WASD move, Q/E down/up, right mouse look, Shift boost.",
+    })
+    controls.FreeCamKey = controls.FreeCamToggle:AddKeyPicker("FreeCamKey", {
+        Text = "Free Cam", Default = "None", Mode = "Toggle", SyncToggleState = true,
+    })
+    controls.FreeCamSpeed = group:AddSlider("FreeCamSpeed", {
+        Text = "Free Cam Speed", Default = 32, Min = 1, Max = 200, Rounding = 0,
+    })
+    controls.FreeCamSensitivity = group:AddSlider("FreeCamSensitivity", {
+        Text = "Mouse Sensitivity", Default = 0.2, Min = 0.05, Max = 1, Rounding = 2,
+    })
+    controls.FreeCamToggle:OnChanged(function()
+        if stopped or Library.Unloaded then
+            disable()
+        elseif controls.FreeCamToggle.Value == true then
+            enable()
+        else
+            disable()
+        end
+    end)
+
+    local function stop()
+        if stopped then return end
+        stopped = true
+        disable()
+    end
+
+    Library:OnUnload(stop)
+    if controls.FreeCamToggle.Value == true then enable() end
+    return {
+        Stop = stop,
+        IsActive = function() return active and not stopped and not Library.Unloaded end,
+        Controls = controls,
+    }
+end
+
+end)()
+
+if not EndHubKeyGate.Authorize() then return end
+
 local environment = (getgenv and getgenv()) or _G
-local previousLibrary = environment.__MEOW_CRIMINALITY_LIBRARY
+local previousLibrary = environment.__ENDHUB_CRIMINALITY_LIBRARY or environment.__MEOW_CRIMINALITY_LIBRARY
 if previousLibrary and not previousLibrary.Unloaded then
 	previousLibrary:Unload()
 end
+environment.__MEOW_CRIMINALITY_LIBRARY = nil
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
@@ -34,7 +738,7 @@ function Runtime.Spawn(callback)
 		local ok, err = pcall(callback)
 		Runtime.Threads[coroutine.running()] = nil
 		if not ok and not Library.Unloaded then
-			warn("[Meow] " .. tostring(err))
+			warn("[EndHub] " .. tostring(err))
 		end
 	end)
 	Runtime.Threads[thread] = true
@@ -44,13 +748,13 @@ end
 function Runtime.Cancel(thread)
 	if not thread then return end
 	Runtime.Threads[thread] = nil
-	if coroutine.status(thread) ~= "dead" then
+	if thread ~= coroutine.running() and coroutine.status(thread) ~= "dead" then
 		pcall(task.cancel, thread)
 	end
 end
 
-local replacedLibrary = environment.__MEOW_CRIMINALITY_LIBRARY
-environment.__MEOW_CRIMINALITY_LIBRARY = Library
+local replacedLibrary = environment.__ENDHUB_CRIMINALITY_LIBRARY
+environment.__ENDHUB_CRIMINALITY_LIBRARY = Library
 if replacedLibrary and replacedLibrary ~= Library and not replacedLibrary.Unloaded then
 	replacedLibrary:Unload()
 end
@@ -59,8 +763,8 @@ Library:OnUnload(function()
 	for thread in pairs(Runtime.Threads) do
 		Runtime.Cancel(thread)
 	end
-	if environment.__MEOW_CRIMINALITY_LIBRARY == Library then
-		environment.__MEOW_CRIMINALITY_LIBRARY = nil
+	if environment.__ENDHUB_CRIMINALITY_LIBRARY == Library then
+		environment.__ENDHUB_CRIMINALITY_LIBRARY = nil
 	end
 end)
 
@@ -114,13 +818,13 @@ Camera = cam
  
  
 local Window = Library:CreateWindow({
-	Title = "Meow",
-	Icon = "cat",
+	Title = "EndHub",
+	Icon = EndHubKeyGate.Logo(),
 	ShowCustomCursor = false,
 	DisableSearch = false,
 	Size = UDim2.fromOffset(740, 540),
 	IconSize = UDim2.fromOffset(40, 40),
-	Footer = "meow made by predaybowie on discord",
+	Footer = "Powered by EndHub",
 	NotifySide = "Right",
 	Resizable = true,
 	ToggleKeybind = Enum.KeyCode.RightControl,
@@ -222,7 +926,7 @@ SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 SaveManager:SetLoadingOrder(true, { "Input", "ColorPicker", "Slider", "Dropdown", "Toggle", "KeyPicker" })
-ThemeManager:SetFolder("Meow")
+ThemeManager:SetFolder("EndHub")
 ThemeManager:SetDefaultTheme({
 	MainColor = "191919",
 	FontFace = "Code",
@@ -231,7 +935,7 @@ ThemeManager:SetDefaultTheme({
 	BackgroundColor = "0f0f0f",
 	FontColor = "ffffff",
 })
-SaveManager:SetFolder("Meow")
+SaveManager:SetFolder("EndHub")
 SaveManager:SetSubFolder("Criminality")
 SaveManager:BuildConfigSection(Tabs.Settings)
 ThemeManager:ApplyToTab(Tabs.Settings)
@@ -283,7 +987,7 @@ do
 	SystemBox:AddLabel({ Text = "Executor: <font color='#aec6cf'>" .. executorName .. "</font>" })
 
 	 
-	CommunityBox:AddLabel({ Text = "<b>Meow</b>", DoesWrap = true })
+	CommunityBox:AddLabel({ Text = "<b>EndHub</b>", DoesWrap = true })
 
 	local uptimeLabel = CommunityBox:AddLabel({ Text = "Uptime: 00:00:00" })
 	local serverTimeLabel = CommunityBox:AddLabel({ Text = "Time: " .. os.date("%X") })
@@ -340,13 +1044,13 @@ do
 				})
 
 				Library:Notify({
-					Title = "Meow",
+					Title = "EndHub",
 					Description = "Opening Discord App...",
 					Time = 4,
 				})
 			else
 				Library:Notify({
-					Title = "Meow",
+					Title = "EndHub",
 					Description = "Invite copied to clipboard!",
 					Time = 4,
 				})
@@ -395,7 +1099,7 @@ do
 		LastNotification = tick()
 
 		Library:Notify({
-			Title = "Meow",
+			Title = "EndHub",
 			Description = desc,
 			Time = time or 4,
 		})
@@ -569,7 +1273,7 @@ do
 	 
 	 
 	local RangePart = Instance.new("Part")
-	RangePart.Name = "MeowAuraRange"
+	RangePart.Name = "EndHubAuraRange"
 	RangePart.Anchored = true
 	RangePart.CanCollide = false
 	RangePart.CanQuery = false
@@ -631,7 +1335,7 @@ do
 	 
 	 
 	local HitGui = Instance.new("ScreenGui")
-	HitGui.Name = "MeowHitFX"
+	HitGui.Name = "EndHubHitFX"
 	HitGui.IgnoreGuiInset = true
 	HitGui.ResetOnSpawn = false
 	HitGui.Parent = CoreGui
@@ -1269,15 +1973,16 @@ do
     local aimTarget
     local aimTargetAccumulator = 0
     Runtime.Connect(RunService.Heartbeat, function(deltaTime)
-        if not on then return end
+        if not on or (Toggles.FreeCamToggle and Toggles.FreeCamToggle.Value) then return end
         aimTargetAccumulator += deltaTime
         if aimTargetAccumulator >= (1 / 30) then
             aimTargetAccumulator %= (1 / 30)
             aimTarget = getClosestTarget()
         end
     end)
-    RunService:BindToRenderStep("MeowAimbot", Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
+    RunService:BindToRenderStep("EndHubAimbot", Enum.RenderPriority.Camera.Value + 1, function(deltaTime)
         if Library.Unloaded or not cam then return end
+        if Toggles.FreeCamToggle and Toggles.FreeCamToggle.Value then return end
         if fovCircle and on then
             local vp = cam.ViewportSize
             fovCircle.Position = Vector2.new(vp.X/2, vp.Y/2)
@@ -1556,7 +2261,7 @@ do
 
     AimbotRight:AddToggle("InstantPelletDelivery", {
         Text = "Instant Pellet Delivery", Default = false,
-        Tooltip = "For Silent Aim / Magic Bullet: sends the existing projectiles of one shot without Meow's delay. Does not fire a whole magazine, create extra bullets, or guarantee a kill.",
+        Tooltip = "For Silent Aim / Magic Bullet: sends the existing projectiles of one shot without EndHub's delay. Does not fire a whole magazine, create extra bullets, or guarantee a kill.",
     })
     Toggles.InstantPelletDelivery:OnChanged(function(state)
         SA.InstantPelletDelivery = state
@@ -1633,7 +2338,7 @@ do
     Library:OnUnload(function()
         on = false
         aimTarget = nil
-        RunService:UnbindFromRenderStep("MeowAimbot")
+        RunService:UnbindFromRenderStep("EndHubAimbot")
         SA.On = false
         SA.MagicBullet = false
         syncSARuntime()
@@ -1730,11 +2435,11 @@ if UseCheapESP then
     })
 
     local ESPFolder = Instance.new("Folder")
-    ESPFolder.Name = "MeowESP"
+    ESPFolder.Name = "EndHubESP"
     ESPFolder.Parent = CoreGui
 
     local LineGui = Instance.new("ScreenGui")
-    LineGui.Name = "MeowESPTracers"
+    LineGui.Name = "EndHubESPTracers"
     LineGui.IgnoreGuiInset = true
     LineGui.ResetOnSpawn = false
     LineGui.Enabled = false
@@ -3313,6 +4018,8 @@ do
         Default = false,
     })
 
+    EndHubFreeCam({ Library = Library, Runtime = Runtime, LocalPlayer = LocalPlayer, Group = CameraBox })
+
     CameraBox:AddSlider("FovSlider", {
         Text = "Field of View",
         Default = 80,
@@ -4715,116 +5422,14 @@ do
         end
     end)
 
-    local movementConnection
-    local movementCharacter
-    local movementOriginals = {}
-
-    local function stopMovement()
-        if movementConnection then
-            movementConnection:Disconnect()
-            movementConnection = nil
-        end
-        movementCharacter = nil
-        for hum, original in pairs(movementOriginals) do
-            if hum.Parent then
-                if original.WalkSpeed ~= nil then hum.WalkSpeed = original.WalkSpeed end
-                if original.JumpPower ~= nil then
-                    hum.JumpPower = original.JumpPower
-                    hum.UseJumpPower = original.UseJumpPower
-                end
-            end
-        end
-        table.clear(movementOriginals)
-    end
-
-    local function syncMovement()
-        if Library.Unloaded then return end
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildWhichIsA("Humanoid")
-        if not hum then return end
-        local original = movementOriginals[hum]
-        if not original then
-            original = {}
-            movementOriginals[hum] = original
-        end
-        if Toggles.WalkSpeedToggle.Value then
-            if original.WalkSpeed == nil then original.WalkSpeed = hum.WalkSpeed end
-            if hum.WalkSpeed ~= Options.WalkSpeedSlider.Value then
-                hum.WalkSpeed = Options.WalkSpeedSlider.Value
-            end
-        elseif original.WalkSpeed ~= nil then
-            hum.WalkSpeed = original.WalkSpeed
-            original.WalkSpeed = nil
-        end
-        if Toggles.JumpPowerToggle.Value then
-            if original.JumpPower == nil then
-                original.JumpPower = hum.JumpPower
-                original.UseJumpPower = hum.UseJumpPower
-            end
-            if not hum.UseJumpPower then hum.UseJumpPower = true end
-            if hum.JumpPower ~= Options.JumpPowerSlider.Value then
-                hum.JumpPower = Options.JumpPowerSlider.Value
-            end
-        elseif original.JumpPower ~= nil then
-            hum.JumpPower = original.JumpPower
-            hum.UseJumpPower = original.UseJumpPower
-            original.JumpPower = nil
-            original.UseJumpPower = nil
-        end
-    end
-
-    PlayerLeft:AddSlider("WalkSpeedSlider", {
-        Text = "Walk Speed",
-        Min = 16,
-        Max = 250,
-        Default = 32,
-        Rounding = 0,
-    })
-
-    PlayerLeft:AddToggle("WalkSpeedToggle", {
-        Text = "Enable Walk Speed",
-        Default = false,
-    })
-
-    PlayerLeft:AddSlider("JumpPowerSlider", {
-        Text = "Jump Power",
-        Min = 50,
-        Max = 300,
-        Default = 100,
-        Rounding = 0,
-    })
-
-    PlayerLeft:AddToggle("JumpPowerToggle", {
-        Text = "Enable Jump Power",
-        Default = false,
-    })
-
-    Toggles.WalkSpeedToggle:OnChanged(syncMovement)
-    Toggles.JumpPowerToggle:OnChanged(syncMovement)
-    Options.WalkSpeedSlider:OnChanged(syncMovement)
-    Options.JumpPowerSlider:OnChanged(syncMovement)
-
-    local function bindMovementCharacter(character)
-        stopMovement()
-        if Library.Unloaded then return end
-        movementCharacter = character
-        movementConnection = Runtime.Connect(character.ChildAdded, function(child)
-            if child:IsA("Humanoid") then syncMovement() end
-        end)
-        syncMovement()
-    end
-
-    Runtime.Connect(LocalPlayer.CharacterAdded, bindMovementCharacter)
-    Runtime.Connect(LocalPlayer.CharacterRemoving, function(character)
-        if character == movementCharacter then stopMovement() end
-    end)
-    if LocalPlayer.Character then bindMovementCharacter(LocalPlayer.Character) end
+    local movement = EndHubMovement({ Library = Library, Runtime = Runtime, LocalPlayer = LocalPlayer, PlayerGroup = PlayerLeft })
 
     local SelectedPlayer = nil
     local Spectating = false
     local SpectateSubjects = {}
 
     local function SetSpectateSubject(humanoid)
+        if Toggles.FreeCamToggle and Toggles.FreeCamToggle.Value then return end
         local camera = workspace.CurrentCamera
         if not camera then return end
         if not SpectateSubjects[camera] then
@@ -5030,16 +5635,27 @@ Toggles.NoclipToggle:OnChanged(function(state)
 end)
 
 Library:OnUnload(function()
-    disableStamina()
-    stopMovement()
-    StopSpectate()
+    pcall(disableStamina)
+    movement.Stop()
+    pcall(StopSpectate)
     SelectedPlayer = nil
     noclipEnabled = false
-    clearNoclipCharacter()
+    pcall(clearNoclipCharacter)
 end)
 end
 
  
+SettingsGroupLeft:AddButton("Load Saved Autoload (Explicit)", function()
+    Runtime.Spawn(function() SaveManager:LoadAutoloadConfig() end)
+end)
 Runtime.Spawn(function()
-    SaveManager:LoadAutoloadConfig()
+    while not Library.Unloaded do
+        task.wait(300)
+        if Library.Unloaded then return end
+        if not EndHubKeyGate.Validate() then
+            Library:Unload()
+            warn("[EndHub] Key validation failed; script unloaded.")
+            return
+        end
+    end
 end)

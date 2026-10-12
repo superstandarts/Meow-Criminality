@@ -1,4 +1,10 @@
 # Local presets and credentials are not part of the published script.
 Meow/
+EndHub/
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+key-service/public/Criminality.luau
 .env
 .env.*
